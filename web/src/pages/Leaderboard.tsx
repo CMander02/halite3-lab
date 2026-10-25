@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Trophy, Zap, Briefcase, Truck, Map as MapIcon, Coin, ArrowRight } from "@nsmr/pixelart-react";
-import type { BoardEntry, LeaderEntry } from "@/lib/types";
+import { Trophy, Zap, Briefcase, Truck, Map as MapIcon, Coin, ArrowRight, Scale } from "@nsmr/pixelart-react";
+import type { BoardEntry, EloEntry, LeaderEntry } from "@/lib/types";
+import { SetupLine, correctionLabel, useCatalog } from "@/components/ModelBadge";
 import { compact, number, percent, useApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -155,7 +156,52 @@ function SubBoard({ board, entries }: { board: Board; entries: BoardEntry[] }) {
   );
 }
 
+function EloBoard({ entries }: { entries: EloEntry[] }) {
+  const catalog = useCatalog();
+  if (!entries.length) return <Empty title="还没有完成评测的版本">在“Bots”上传版本并参加评测后，这里按修正后 ELO 排名。</Empty>;
+  return (
+    <table className="ptable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Bot</th>
+          <th>模型 · 推理 · 平台</th>
+          <th className="right">原始 ELO</th>
+          <th className="right">修正</th>
+          <th className="right text-blue">修正后 ELO</th>
+          <th className="right">胜率</th>
+          <th className="right">场次</th>
+        </tr>
+      </thead>
+      <tbody>
+        {entries.map((e) => (
+          <tr key={e.version_id} className={e.builtin ? "bg-paper" : ""}>
+            <td className={cn("num", e.rank && e.rank <= 3 ? "text-blue" : "text-ink-3")}>{e.rank ? String(e.rank).padStart(2, "0") : "基准"}</td>
+            <td className="max-w-[220px]">
+              <a href={`/matches?version=${e.version_id}`} className="block hover:text-blue">
+                <Who e={e} />
+              </a>
+            </td>
+            <td className="max-w-[300px]">
+              <SetupLine attribution={e.attribution} catalog={catalog} />
+            </td>
+            <td className="right num text-ink-2">
+              {Math.round(e.elo)}
+              <span className="text-ink-3"> ±{Math.round(e.elo_sd)}</span>
+            </td>
+            <td className="right num text-ink-2">{e.builtin ? "—" : correctionLabel(e.correction)}</td>
+            <td className="right num text-[24px] leading-[24px]">{Math.round(e.adjusted_elo)}</td>
+            <td className="right num">{percent(e.win_rate)}</td>
+            <td className="right num text-ink-3">{e.games}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function Leaderboard() {
+  const elo = useApi<{ entries: EloEntry[]; anchor: number }>("/leaderboard/elo");
   const tiers = useApi<{ entries: LeaderEntry[]; season: string; required_games: number }>("/leaderboard");
   const [mode, setMode] = useState("");
   const stats = useApi<{ entries: BoardEntry[] }>(`/leaderboard/stats${mode ? `?mode=${mode}` : ""}`);
@@ -165,8 +211,8 @@ export default function Leaderboard() {
     <>
       <PageHead
         eyebrow="排行榜"
-        title="Tier 与子榜"
-        description="Tier 来自相同基准、相同地图、交换座位的 12 场评测；子榜统计全部公开对局。"
+        title="ELO、Tier 与子榜"
+        description="ELO 总榜按修正后的 ELO 排名，用来平衡不同模型和推理强度；Tier 来自 12 场固定基准评测；子榜统计全部公开对局。"
         action={
           <Button asChild>
             <a href="/bots">
@@ -175,12 +221,15 @@ export default function Leaderboard() {
           </Button>
         }
       />
-      <ErrorBox message={tiers.error || stats.error} />
-      <Tabs defaultValue="tier" className="gap-6">
+      <ErrorBox message={tiers.error || stats.error || elo.error} />
+      <Tabs defaultValue="elo" className="gap-6">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="h-10">
+            <TabsTrigger value="elo" className="px-4">
+              <Scale size={14} /> ELO 总榜
+            </TabsTrigger>
             <TabsTrigger value="tier" className="px-4">
-              <Trophy size={14} /> 总榜
+              <Trophy size={14} /> Tier
             </TabsTrigger>
             {BOARDS.map(({ key, label, icon: Icon }) => (
               <TabsTrigger key={key} value={key} className="px-4">
@@ -189,6 +238,14 @@ export default function Leaderboard() {
             ))}
           </TabsList>
         </div>
+
+        <TabsContent value="elo" className="flex flex-col gap-4">
+          <div className="pixel-frame overflow-x-auto p-0">{elo.loading ? <Loading /> : <EloBoard entries={elo.data?.entries || []} />}</div>
+          <p className="m-0 max-w-[880px] text-ink-3">
+            原始 ELO：对全部公开对局做 Bradley–Terry 极大似然拟合（每局按名次两两比较，多人局按 1/(n−1) 加权，另加对 1500 锚点的一胜一负先验），与比赛顺序无关。
+            修正后 ELO = 原始 ELO − 模型修正 − 推理强度修正 − 平台修正；强模型、强推理扣分更多。用户声明与轨迹检测不一致时按修正更大的一方计算，管理员可以人工确认。平台基准不做修正、不参与排名。
+          </p>
+        </TabsContent>
 
         <TabsContent value="tier" className="flex flex-col gap-6">
           {tiers.loading ? (

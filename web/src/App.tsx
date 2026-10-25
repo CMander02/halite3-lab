@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Menu, Logout, User as UserIcon, Code, Login, Ship } from "@nsmr/pixelart-react";
+import { Menu, Logout, User as UserIcon, Code, Login, Ship, Human, Shield } from "@nsmr/pixelart-react";
 import { api, useApi } from "@/lib/api";
 import { interceptLinks, navigate, useLocation } from "@/lib/router";
 import type { Health, User } from "@/lib/types";
@@ -26,6 +26,8 @@ const Bots = lazy(() => import("@/pages/Bots"));
 const Tests = lazy(() => import("@/pages/Tests"));
 const Account = lazy(() => import("@/pages/Account"));
 const Auth = lazy(() => import("@/pages/Auth"));
+const Me = lazy(() => import("@/pages/Me"));
+const Admin = lazy(() => import("@/pages/Admin"));
 
 const NAV = [
   { href: "/", label: "概览", code: "HOME" },
@@ -65,6 +67,14 @@ function UserMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
           <div className="text-ink-3">@{user.username}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => navigate("/me")}>
+          <Human size={16} /> 我的主页
+        </DropdownMenuItem>
+        {user.is_admin && (
+          <DropdownMenuItem onSelect={() => navigate("/admin")}>
+            <Shield size={16} /> 管理后台
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={() => navigate("/settings")}>
           <UserIcon size={16} /> 账号与头像
         </DropdownMenuItem>
@@ -108,6 +118,8 @@ export default function App() {
   else if (path === "/leaderboard") page = <Leaderboard />;
   else if (path === "/bots") page = <Bots user={user} />;
   else if (path === "/tests" || jobId) page = <Tests user={user} jobId={jobId} />;
+  else if (path === "/me") page = <Me user={user} />;
+  else if (path === "/admin") page = <Admin user={user} />;
   else if (path === "/settings") page = <Account user={user} onChange={refresh} />;
   else if (path === "/login" || path === "/register") page = <Auth mode={path === "/register" ? "register" : "login"} onDone={refresh} />;
   else
@@ -199,6 +211,14 @@ export default function App() {
                             <span className="text-ink-3">账号与头像 &gt;</span>
                           </span>
                         </a>
+                        <a href="/me" className="flex items-center gap-2 border border-line p-3">
+                          <Human size={16} /> 我的主页 · 提交与排名
+                        </a>
+                        {user.is_admin && (
+                          <a href="/admin" className="flex items-center gap-2 border border-line p-3">
+                            <Shield size={16} /> 管理后台
+                          </a>
+                        )}
                         <Button variant="outline" onClick={() => void logout()}>
                           <Logout size={16} /> 退出登录
                         </Button>

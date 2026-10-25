@@ -3,6 +3,7 @@ export interface User {
   username: string;
   display_name: string;
   avatar_version?: number;
+  is_admin?: boolean;
 }
 export interface Profile extends User {
   avatar_version: number;
@@ -72,6 +73,12 @@ export interface Version {
   size: number;
   notes: string;
   created_at: number;
+  listed?: number;
+  archived?: number;
+  declared_model?: string | null;
+  declared_effort?: string | null;
+  declared_harness?: string | null;
+  has_trace?: number;
 }
 export interface Bot {
   id: string;
@@ -82,6 +89,7 @@ export interface Bot {
   author: string | null;
   versions: Version[];
   created_at: number;
+  default_version_id?: string | null;
 }
 export interface Seat {
   id: string;
@@ -189,4 +197,119 @@ export interface Replay {
   };
   map_generator_seed: number;
   lab_replay_schema: string;
+}
+export type CatalogKind = "model" | "effort" | "harness";
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  vendor: string;
+  region: "cn" | "us" | "other" | "";
+  icon: string;
+  elo_offset: number;
+  sort: number;
+  enabled: boolean;
+  patterns?: string[];
+}
+export type Catalog = Record<CatalogKind, CatalogEntry[]>;
+export interface AttributionPart {
+  declared: string;
+  detected: string;
+  value: string;
+  source: "declared" | "detected" | "admin";
+  offset: number;
+}
+export interface Attribution {
+  model: AttributionPart;
+  effort: AttributionPart;
+  harness: AttributionPart;
+  correction: number;
+  mismatch: CatalogKind[];
+}
+export interface Detection {
+  model: string;
+  model_confidence: string;
+  models: Record<string, number>;
+  effort: string;
+  effort_confidence: string;
+  harness: string;
+  harness_confidence: string;
+  format: string;
+  records: number;
+  messages: number;
+  output_tokens: number;
+  started_at: number | null;
+  ended_at: number | null;
+  duration_seconds: number | null;
+  evidence: string[];
+}
+export interface EloStats {
+  elo: number;
+  elo_sd: number;
+  adjusted_elo: number;
+  correction: number;
+  rank: number | null;
+  games: number;
+  wins: number;
+  win_rate: number;
+}
+export interface RankedStatus {
+  job_id: string;
+  counts: Record<string, number>;
+  total: number;
+  complete: number;
+  tier: string | null;
+  wins?: number;
+  win_rate?: number;
+}
+export interface Submission {
+  id: string;
+  bot_id: string;
+  bot_name: string;
+  version: string;
+  language: string;
+  filename: string;
+  size: number;
+  sha256: string;
+  notes: string;
+  created_at: number;
+  listed: boolean;
+  archived: boolean;
+  is_default: boolean;
+  author: string | null;
+  author_id: string | null;
+  username: string | null;
+  trace: { filename: string; size: number; sha256: string } | null;
+  detection: Detection | null;
+  attribution: Attribution;
+  ranked: RankedStatus | null;
+  elo: EloStats | null;
+  admin_note?: string;
+}
+export interface EloEntry extends EloStats {
+  version_id: string;
+  bot_id: string;
+  bot_name: string;
+  version: string;
+  author: string | null;
+  author_id: string | null;
+  username: string | null;
+  builtin: number;
+  listed: boolean;
+  avg_rank: number;
+  attribution: { model: { value: string; offset: number; source: string }; effort: { value: string; offset: number; source: string }; harness: { value: string; offset: number; source: string }; correction: number; mismatch: string[] } | null;
+}
+export interface AdminUser {
+  id: string;
+  username: string;
+  display_name: string;
+  created_at: number;
+  is_admin: boolean;
+  disabled_at: number | null;
+  avatar_version: number;
+  bots: number;
+  versions: number;
+  matches: number;
+  last_login: number | null;
+  sessions: number;
+  tokens: number;
 }
