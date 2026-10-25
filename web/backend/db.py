@@ -46,9 +46,10 @@ def initialize():
             db.execute(
                 "ALTER TABLE versions ADD COLUMN language TEXT NOT NULL DEFAULT 'python'"
             )
-        from . import analytics, profiles
+        from . import admin, analytics, profiles
 
         profiles.migrate(db)
+        admin.migrate(db)
         analytics.backfill(db)
         for name, version in [("baseline", "1.0"), ("raider", "1.1")]:
             blob = io.BytesIO()

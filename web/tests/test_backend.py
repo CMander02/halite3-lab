@@ -21,6 +21,11 @@ from backend.builds import prepare, sandbox, BotBuildError
 from backend.scheduler import version_info, snapshot
 
 PASSWORD = "a-long-test-password-42"
+TRACE = (
+    b'{"type":"user","sessionId":"s","userType":"external","entrypoint":"cli","timestamp":"2026-10-25T10:00:00Z","message":{"role":"user","content":"write a bot"}}\n'
+    b'{"type":"assistant","sessionId":"s","userType":"external","entrypoint":"cli","timestamp":"2026-10-25T10:40:00Z","message":{"role":"assistant","model":"claude-opus-5-5","content":[],"usage":{"output_tokens":1200}}}\n'
+    b'{"type":"api-request","sessionId":"s","timestamp":"2026-10-25T10:40:00Z","params":{"model":"claude-opus-5-5","output_config":{"effort":"high"}}}\n'
+)
 SOURCE = b'import sys,json\ninit=json.loads(sys.stdin.readline())\nprint("example",flush=True)\nfor line in sys.stdin: print("",flush=True)\n'
 
 
@@ -58,15 +63,20 @@ class BackendTest(unittest.TestCase):
         source=SOURCE,
         filename="bot.py",
         bot=None,
+        trace=TRACE,
+        declared=None,
     ):
         if bot is None:
             response = client.post("/api/bots", json={"name": name})
             self.assertEqual(response.status_code, 201, response.text)
             bot = response.json()["id"]
+        files = {"file": (filename, source)}
+        if trace is not None:
+            files["trace"] = ("session.jsonl", trace)
         response = client.post(
             f"/api/bots/{bot}/versions",
-            data={"version": version},
-            files={"file": (filename, source)},
+            data={"version": version, **(declared or {})},
+            files=files,
         )
         self.assertEqual(response.status_code, 201, response.text)
         return bot, response.json()["id"]
@@ -147,7 +157,7 @@ class BackendTest(unittest.TestCase):
         duplicate = self.a.post(
             f"/api/bots/{bot}/versions",
             data={"version": "2.0"},
-            files={"file": ("bot.py", SOURCE + b"# overwrite")},
+            files={"file": ("bot.py", SOURCE + b"# overwrite"), "trace": ("t.jsonl", TRACE)},
         )
         self.assertEqual(duplicate.status_code, 409)
         self.assertEqual(
@@ -316,8 +326,104 @@ class BackendTest(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_single_admin_and_user_management(self):
+        admin = self.account(self.a, S.ADMIN_USERNAME)
+        bob = self.account(self.b, "bob")
+        self.assertTrue(self.a.get("/api/session").json()["user"]["is_admin"])
+        self.assertFalse(self.b.get("/api/session").json()["user"]["is_admin"])
+        self.assertEqual(self.b.get("/api/admin/users").status_code, 403)
+        listed = self.a.get("/api/admin/users").json()["users"]
+        self.assertEqual([u["username"] for u in listed if u["is_admin"]], [S.ADMIN_USERNAME])
+        with self.assertRaises(sqlite3.IntegrityError), connect() as db:
+            db.execute("UPDATE users SET is_admin=1 WHERE id=?", (bob["id"],))
+        self.assertEqual(self.a.patch(f"/api/admin/users/{admin['id']}", json={"disabled": True}).status_code, 400)
+        self.assertEqual(self.a.patch(f"/api/admin/users/{bob['id']}", json={"disabled": True}).status_code, 200)
+        self.assertIsNone(self.b.get("/api/session").json()["user"])
+        login = self.b.post("/api/auth/login", json={"username": "bob", "password": PASSWORD})
+        self.assertEqual(login.status_code, 403)
+        self.a.patch(f"/api/admin/users/{bob['id']}", json={"disabled": False})
+        password = self.a.post(f"/api/admin/users/{bob['id']}/password").json()["password"]
+        self.assertEqual(self.b.post("/api/auth/login", json={"username": "bob", "password": PASSWORD}).status_code, 401)
+        self.assertEqual(self.b.post("/api/auth/login", json={"username": "bob", "password": password}).status_code, 200)
+
+    def test_trace_is_required_detected_and_strongest_setup_counts(self):
+        self.account(self.a, "alice")
+        response = self.a.post("/api/bots", json={"name": "traced"})
+        bot = response.json()["id"]
+        missing = self.a.post(f"/api/bots/{bot}/versions", data={"version": "1"}, files={"file": ("bot.py", SOURCE)})
+        self.assertEqual(missing.status_code, 400)
+        _, vid = self.upload(self.a, bot=bot, version="2",
+                             declared={"model": "claude-haiku-5-5", "effort": "low", "harness": "claude-code"})
+        item = self.a.get("/api/me/submissions").json()["submissions"][0]
+        self.assertEqual(item["detection"]["model"], "claude-opus-5-5")
+        self.assertEqual(item["detection"]["effort"], "high")
+        self.assertEqual(item["detection"]["harness"], "claude-code")
+        self.assertEqual(item["detection"]["duration_seconds"], 2400)
+        attribution = item["attribution"]
+        self.assertEqual(attribution["model"]["value"], "claude-opus-5-5")
+        self.assertEqual(attribution["model"]["source"], "detected")
+        self.assertEqual(attribution["effort"]["value"], "high")
+        self.assertEqual(set(attribution["mismatch"]), {"model", "effort"})
+        trace = self.a.get(f"/api/versions/{vid}/trace")
+        self.assertEqual(trace.status_code, 200)
+        self.assertEqual(self.b.get(f"/api/versions/{vid}/trace").status_code, 401)
+        # Declaring a stronger setup than detected keeps the declaration.
+        _, strong = self.upload(self.a, bot=bot, version="3",
+                                declared={"model": "claude-fable-5-1", "effort": "max", "harness": "claude-code"})
+        item = next(i for i in self.a.get("/api/me/submissions").json()["submissions"] if i["id"] == strong)
+        self.assertEqual(item["attribution"]["model"]["value"], "claude-fable-5-1")
+
+    def test_admin_catalog_override_and_elo_correction(self):
+        self.account(self.a, S.ADMIN_USERNAME)
+        self.account(self.b, "bob")
+        _, weak = self.upload(self.b, name="weak", declared={"model": "claude-haiku-5-5", "effort": "low", "harness": "chat-web"},
+                              trace=b"plain text chat with claude-haiku-5-5")
+        _, strong = self.upload(self.b, name="strong", declared={"model": "claude-opus-5-5", "effort": "high", "harness": "claude-code"})
+        with connect() as db:
+            db.execute("INSERT INTO jobs(id,owner_id,name,kind,config_json,created_at) VALUES('j',NULL,'j','private','{}',0)")
+            seats = lambda *ids: json.dumps([{"id": i} for i in ids])
+            result = lambda r0, r1: json.dumps({"stats": {"0": {"rank": r0, "score": 1}, "1": {"rank": r1, "score": 0}}})
+            games = [(strong, "builtin-baseline-v1", 1, 2)] * 6 + [(weak, "builtin-baseline-v1", 1, 2)] * 5 + [(weak, "builtin-baseline-v1", 2, 1)]
+            for i, (x, y, rx, ry) in enumerate(games):
+                db.execute("INSERT INTO matches(id,job_id,owner_id,mode,seed,seat_json,status,public,result_json,created_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                           (f"m{i}", "j", None, 2, 1, seats(x, y), "complete", 1, result(rx, ry), i, i))
+        entries = {e["version_id"]: e for e in self.a.get("/api/leaderboard/elo").json()["entries"]}
+        self.assertGreater(entries[strong]["elo"], entries[weak]["elo"])
+        self.assertEqual(entries[strong]["correction"], 140 + 25 + 30)
+        self.assertEqual(entries[weak]["correction"], 40 - 25 + 0)
+        self.assertEqual(entries["builtin-baseline-v1"]["correction"], 0)
+        self.assertIsNone(entries["builtin-baseline-v1"]["rank"])
+        self.assertEqual(entries[weak]["rank"], 1)
+        # Admin raises the Haiku correction and overrides the strong version's model.
+        entry = next(e for e in self.a.get("/api/admin/catalog").json()["model"] if e["id"] == "claude-haiku-5-5")
+        entry["elo_offset"] = 400
+        self.assertEqual(self.a.put("/api/admin/catalog/model/claude-haiku-5-5", json=entry).status_code, 200)
+        self.assertEqual(self.b.put("/api/admin/catalog/model/claude-haiku-5-5", json=entry).status_code, 403)
+        response = self.a.put(f"/api/admin/versions/{strong}/attribution", json={"model": "claude-sonnet-5-5", "note": "人工确认"})
+        self.assertEqual(response.status_code, 200, response.text)
+        entries = {e["version_id"]: e for e in self.a.get("/api/leaderboard/elo").json()["entries"]}
+        self.assertEqual(entries[weak]["correction"], 400 - 25)
+        self.assertEqual(entries[strong]["correction"], 100 + 25 + 30)
+        self.assertEqual(entries[strong]["rank"], 1)
+        # Hidden versions keep their rating but leave the public board.
+        self.b.patch(f"/api/versions/{strong}", json={"listed": False})
+        ids = [e["version_id"] for e in self.a.get("/api/leaderboard/elo").json()["entries"]]
+        self.assertNotIn(strong, ids)
+
+    def test_version_archive_and_default_version(self):
+        self.account(self.a, "alice")
+        bot, first = self.upload(self.a, version="1")
+        _, second = self.upload(self.a, version="2", bot=bot)
+        resolve = lambda: self.a.post("/api/tests", json={"bot_ids": [bot, "builtin-baseline"], "seeds": [3]}).json()["id"]
+        seats = lambda job: self.a.get(f"/api/tests/{job}").json()["matches"][0]["seats"][0]["id"]
+        self.assertEqual(seats(resolve()), second)
+        self.assertEqual(self.a.patch(f"/api/bots/{bot}", json={"default_version_id": first}).status_code, 200)
+        self.assertEqual(seats(resolve()), first)
+        self.a.patch(f"/api/versions/{first}", json={"archived": True, "notes": "旧版"})
+        self.assertEqual(seats(resolve()), second)
+        versions = next(b for b in self.a.get("/api/bots").json()["bots"] if b["id"] == bot)["versions"]
+        self.assertEqual({v["version"]: v["archived"] for v in versions}, {"1": 1, "2": 0})
+        self.assertEqual(self.a.patch(f"/api/bots/{bot}", json={"default_version_id": first}).status_code, 400)
 
 
 class ProfileAndAnalyticsTest(unittest.TestCase):
@@ -388,3 +494,7 @@ class ProfileAndAnalyticsTest(unittest.TestCase):
         self.assertEqual(p1["lost"], 700)
         self.assertEqual(p0["delivered"], 900)
         self.assertGreater(p0["territory"], p1["territory"])
+
+
+if __name__ == "__main__":
+    unittest.main()
