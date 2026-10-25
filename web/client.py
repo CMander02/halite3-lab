@@ -17,7 +17,8 @@ def request(
     content_type=None,
     cookie=None,
 ):
-    headers = {"Origin": origin, "Accept": "application/json"}
+    # Cloudflare rejects the default Python-urllib signature.
+    headers = {"Origin": origin, "Accept": "application/json", "User-Agent": "halite3-cli/1.1 (+https://github.com/CMander02/halite3-lab)"}
     if token:
         headers["Authorization"] = "Bearer " + token
     if cookie:
