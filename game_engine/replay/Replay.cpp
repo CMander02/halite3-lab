@@ -129,6 +129,7 @@ void to_json(nlohmann::json &json, const Replay *replay) {
         players_json.push_back(player);
     }
     json["players"] = players_json;
+    if (replay->GAME_CONSTANTS.LAB_PROTOCOL) json["lab_replay_schema"] = "halite3-lab-v1";
 }
 
 /**

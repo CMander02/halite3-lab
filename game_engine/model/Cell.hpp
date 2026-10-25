@@ -16,6 +16,8 @@ struct Cell final {
     Entity::id_type entity = Entity::None;  /**< Entity on this Cell. */
     Player::id_type owner = Player::None;   /**< Owner of this Cell if there is one. */
 
+    bool reef = false;                     /**< Impassable public terrain. */
+
     /**
      * Convert a Cell to JSON format.
      * @param[out] json The output JSON.

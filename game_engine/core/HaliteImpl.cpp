@@ -38,7 +38,7 @@ void HaliteImpl::initialize_game(const std::vector<std::string> &player_commands
         for (dimension_type row = 0; row < game.map.height; row++) {
             for (dimension_type col = 0; col < game.map.width; col++) {
                 game.map.at(col, row).energy = snapshot.map.at(static_cast<size_t>(row * game.map.width + col));
-                changed_cells.emplace(row, col);
+                changed_cells.emplace(col, row);
             }
         }
     }

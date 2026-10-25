@@ -6,8 +6,11 @@ if ! command -v git >/dev/null 2>&1; then exit; fi
 if ! git rev-parse; then exit; fi
 
 # Use git describe output with all - replaced with . and leading v removed.
-VERSION=`git describe --abbrev=3 --tags HEAD \
+VERSION=`git describe --abbrev=3 --tags HEAD 2>/dev/null \
         | sed -e "s/-/./g" -e "s/^v\(.*\)/\1/"`
+
+# Shallow checkouts may contain no release tags. Keep the checked-in version.
+if [ -z "$VERSION" ]; then exit; fi
 
 # extract the current version definition
 HEADER_VERSION=`sed -n 's/#define HALITE_VERSION "\([^"]*\)"/\1/p' version.hpp`

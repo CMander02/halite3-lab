@@ -1,0 +1,41 @@
+{
+  "engine": "build/halite",
+  "rules": "lab/config/rules.json",
+  "width": 32,
+  "height": 32,
+  "turns": 200,
+  "seeds": [
+    11,
+    29,
+    47
+  ],
+  "modes": [
+    2
+  ],
+  "rotate_seats": true,
+  "timeout": 120,
+  "bots": [
+    {
+      "name": "baseline",
+      "command": [
+        "python3",
+        "lab/bots/baseline.py"
+      ],
+      "sources": [
+        "lab/bots/baseline.py",
+        "lab/bots/common.py"
+      ]
+    },
+    {
+      "name": "raider",
+      "command": [
+        "python3",
+        "lab/bots/raider.py"
+      ],
+      "sources": [
+        "lab/bots/raider.py",
+        "lab/bots/common.py"
+      ]
+    }
+  ]
+}

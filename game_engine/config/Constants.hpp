@@ -18,6 +18,13 @@ namespace hlt {
 struct Constants {
     friend int ::main(int argc, char *argv[]);
 
+    // Lab rules are opt-in, so the upstream protocol and rules remain available.
+    bool LAB_PROTOCOL = false;
+    bool FOG_ENABLED = false;
+    dimension_type VISION_RADIUS = 4;
+    unsigned long REEF_PERCENT = 0;
+    bool LIGHT_SHIP_COLLISIONS = false;
+
     bool STRICT_ERRORS = false;                 /**< Whether strict error checking mode is enabled. */
 
     unsigned long MAX_PLAYERS = 16;             /**< The maximum number of players. */

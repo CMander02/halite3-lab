@@ -43,6 +43,8 @@ class Store {
     std::unordered_set<Location> changed_cells{}; /**< The cells changed on the last turn. */
 
 public:
+    const ordered_id_map<Player, Player> &get_players() const { return players; }
+    const Player &get_player(const Player::id_type &id) const { return players.at(id); }
     unsigned long long map_total_energy{}; /**< The total energy remaining on the map. */
 
     /**
