@@ -55,16 +55,18 @@ def user_for(request: Request, required=True):
         with connect() as db:
             if bearer:
                 row = db.execute(
-                    "SELECT u.id,u.username,u.display_name,u.avatar_version FROM users u JOIN api_tokens t ON t.user_id=u.id WHERE t.token_hash=? AND t.expires_at>?",
+                    "SELECT u.id,u.username,u.display_name,u.avatar_version,u.is_admin FROM users u JOIN api_tokens t ON t.user_id=u.id WHERE t.token_hash=? AND t.expires_at>? AND u.disabled_at IS NULL",
                     (digest(value), now()),
                 ).fetchone()
             else:
                 row = db.execute(
-                    "SELECT u.id,u.username,u.display_name,u.avatar_version FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?",
+                    "SELECT u.id,u.username,u.display_name,u.avatar_version,u.is_admin FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled_at IS NULL",
                     (digest(value), now()),
                 ).fetchone()
     if row:
-        return dict(row)
+        user = dict(row)
+        user["is_admin"] = bool(user["is_admin"])
+        return user
     if required:
         raise HTTPException(401, "请先登录。")
     return None
@@ -95,3 +97,10 @@ def verify_password(stored, password):
         return PASSWORDS.verify(stored, password)
     except (VerificationError, InvalidHashError):
         return False
+
+
+def admin_for(request: Request):
+    user = user_for(request)
+    if not user["is_admin"]:
+        raise HTTPException(403, "仅管理员可以访问。")
+    return user

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from . import settings as S
 from .db import connect, initialize, now
-from . import profiles
+from . import admin, profiles, submissions
 from .security import (
     COOKIE,
     PASSWORDS,
@@ -39,6 +39,9 @@ from .security import (
     verify_password,
 )
 from .storage import disk_check, validate_archive
+from .catalog import load as load_catalog
+from .submissions import prepare_trace
+import zipfile
 from .scheduler import create_job, get_match, job_dict, match_dict, version_info
 
 AUTH_LIMIT = threading.BoundedSemaphore(2)
@@ -61,6 +64,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(profiles.router)
+app.include_router(admin.router)
+app.include_router(submissions.router)
 
 
 @app.middleware("http")
@@ -73,7 +78,7 @@ async def protection(request, call_next):
             )
         try:
             maximum = (
-                S.MAX_UPLOAD + 131072
+                S.MAX_UPLOAD + S.MAX_TRACE + 131072
                 if request.headers.get("content-type", "").startswith("multipart/")
                 else 65536
             )
@@ -193,6 +198,7 @@ def register(payload: Credentials, request: Request, response: Response):
                     profiles.new_pattern(db),
                 ),
             )
+            admin.ensure_admin(db)
     except sqlite3.IntegrityError:
         raise HTTPException(409, "用户名已被使用。")
     set_session(response, user_id, request.cookies.get(COOKIE))
@@ -221,6 +227,8 @@ def login(payload: Credentials, request: Request, response: Response):
         )
     if not valid or not user:
         raise HTTPException(401, "用户名或密码不正确。")
+    if user["disabled_at"]:
+        raise HTTPException(403, "账号已被管理员停用。")
     set_session(response, user["id"], request.cookies.get(COOKIE))
     return {
         "user": {
@@ -308,7 +316,7 @@ def bots(request: Request):
             item["versions"] = [
                 dict(v)
                 for v in db.execute(
-                    "SELECT id,version,sha256,filename,size,notes,created_at,language FROM versions WHERE bot_id=? ORDER BY created_at DESC,rowid DESC",
+                    "SELECT id,version,sha256,filename,size,notes,created_at,language,listed,archived,declared_model,declared_effort,declared_harness,trace_key IS NOT NULL AS has_trace FROM versions WHERE bot_id=? ORDER BY created_at DESC,rowid DESC",
                     (item["id"],),
                 )
             ]
@@ -348,13 +356,37 @@ async def upload_version(
     file: UploadFile = File(...),
     version: str = Form(...),
     notes: str = Form(""),
+    trace: UploadFile | None = File(None),
+    model: str = Form("unknown"),
+    effort: str = Form("unknown"),
+    harness: str = Form("unknown"),
+    rank: bool = Form(False),
 ):
     async with UPLOAD_SLOTS:
-        return await store_version(bot_id, request, file, version, notes)
+        result = await store_version(bot_id, request, file, version, notes, trace, {"model": model, "effort": effort, "harness": harness})
+    if rank:
+        user = user_for(request)
+        try:
+            result["ranked_job_id"] = await run_in_threadpool(
+                create_job, user["id"], "排名评测", [result["id"]], [2], [11, 29, 47], True, True
+            )
+        except HTTPException as exc:
+            result["ranked_error"] = exc.detail
+    return result
 
 
-async def store_version(bot_id, request, file, version, notes):
+async def read_limited(file, limit, message):
+    data = bytearray()
+    while chunk := await file.read(65536):
+        if len(data) + len(chunk) > limit:
+            raise HTTPException(413, message)
+        data.extend(chunk)
+    return bytes(data)
+
+
+async def store_version(bot_id, request, file, version, notes, trace=None, declared=None):
     user = user_for(request)
+    declared = declared or {}
     rate_limit(request, "upload", 20, 3600, user["id"])
     disk_check()
     if (
@@ -369,13 +401,22 @@ async def store_version(bot_id, request, file, version, notes):
             "SELECT id FROM bots WHERE id=? AND owner_id=?", (bot_id, user["id"])
         ).fetchone():
             raise HTTPException(404, "Bot 不存在或无权访问。")
-    data = bytearray()
-    while chunk := await file.read(65536):
-        if len(data) + len(chunk) > S.MAX_UPLOAD:
-            raise HTTPException(413, "文件不能超过 5 MiB。")
-        data.extend(chunk)
+        catalog = load_catalog(db, enabled_only=True)
+    for kind in ("model", "effort", "harness"):
+        if declared.get(kind, "unknown") not in catalog[kind]:
+            raise HTTPException(400, f"请选择有效的{ {'model': '模型', 'effort': '推理强度', 'harness': '平台'}[kind] }。")
+    data = await read_limited(file, S.MAX_UPLOAD, "文件不能超过 5 MiB。")
     if not data:
         raise HTTPException(400, "文件不能为空。")
+    trace_data = await read_limited(trace, S.MAX_TRACE, "对话轨迹不能超过 16 MiB（可先 gzip 压缩）。") if trace else b""
+    if S.REQUIRE_TRACE and not trace_data:
+        raise HTTPException(400, "请同时上传生成这个版本的对话轨迹（如 Claude Code / Codex 的会话 JSONL）。")
+    prepared = None
+    if trace_data:
+        try:
+            prepared = await run_in_threadpool(prepare_trace, trace_data, Path(trace.filename or "trace.jsonl").name)
+        except (ValueError, OSError, zipfile.BadZipFile, EOFError) as exc:
+            raise HTTPException(400, f"对话轨迹无法读取：{str(exc)[:160]}")
     filename = Path(file.filename or "bot.py").name
     try:
         language = await run_in_threadpool(validate_archive, bytes(data), filename)
@@ -404,7 +445,7 @@ async def store_version(bot_id, request, file, version, notes):
                 raise HTTPException(409, "已达到 200 个版本或 256 MiB 源码配额。")
             path.write_bytes(data)
             db.execute(
-                "INSERT INTO versions(id,bot_id,version,object_key,sha256,filename,size,notes,created_at,language) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO versions(id,bot_id,version,object_key,sha256,filename,size,notes,created_at,language,declared_model,declared_effort,declared_harness) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     vid,
                     bot_id,
@@ -416,14 +457,26 @@ async def store_version(bot_id, request, file, version, notes):
                     notes,
                     now(),
                     language,
+                    declared.get("model", "unknown"),
+                    declared.get("effort", "unknown"),
+                    declared.get("harness", "unknown"),
                 ),
             )
+            if prepared:
+                packed, columns = prepared
+                (directory / "trace.gz").write_bytes(packed)
+                columns["trace_key"] = str((directory / "trace.gz").relative_to(S.DATA))
+                db.execute(
+                    "UPDATE versions SET " + ",".join(f"{k}=?" for k in columns) + " WHERE id=?",
+                    [*columns.values(), vid],
+                )
             latest = directory.parent.parent / "latest"
             temporary = directory.parent.parent / f".latest-{vid}"
             temporary.symlink_to(Path("versions") / vid)
             temporary.replace(latest)
     except BaseException as exc:
         path.unlink(missing_ok=True)
+        (directory / "trace.gz").unlink(missing_ok=True)
         if isinstance(exc, sqlite3.IntegrityError):
             raise HTTPException(409, "此版本号已存在，版本内容不可覆盖。")
         raise
@@ -463,8 +516,9 @@ def new_test(payload: TestCreate, request: Request):
         version_ids = []
         with connect() as db:
             for bot_id in payload.bot_ids:
+                # The bot's default version if one is pinned, else its latest non-archived version.
                 row = db.execute(
-                    "SELECT v.id FROM versions v JOIN bots b ON b.id=v.bot_id WHERE b.id=? AND (b.owner_id=? OR b.builtin=1) ORDER BY v.created_at DESC,v.rowid DESC LIMIT 1",
+                    "SELECT v.id FROM versions v JOIN bots b ON b.id=v.bot_id WHERE b.id=? AND (b.owner_id=? OR b.builtin=1) AND v.archived=0 ORDER BY v.id=COALESCE(b.default_version_id,'') DESC,v.created_at DESC,v.rowid DESC LIMIT 1",
                     (bot_id, user["id"]),
                 ).fetchone()
                 if not row:
@@ -709,6 +763,8 @@ def frontend(path: str):
         and (DIST / path).is_file()
     ):
         return FileResponse(DIST / path)
+    if re.fullmatch(r"model-icons/[a-z0-9-]+\.svg", path) and (DIST / path).is_file():
+        return FileResponse(DIST / path, headers={"Cache-Control": "public, max-age=86400"})
     if not (DIST / "index.html").exists():
         return JSONResponse({"detail": "前端尚未构建。"}, status_code=503)
     return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})

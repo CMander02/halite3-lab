@@ -9,6 +9,9 @@ ENGINE = Path(os.environ.get("HALITE_ENGINE", str(PROJECT / "build/halite"))).re
 BWRAP = os.environ.get("HALITE_BWRAP", "/usr/local/lib/halite3/bwrap")
 CXX = os.environ.get("HALITE_CXX", "/usr/bin/g++")
 MAX_UPLOAD = 5 * 1024 * 1024
+MAX_TRACE = 16 * 1024 * 1024
+REQUIRE_TRACE = os.environ.get("HALITE_REQUIRE_TRACE", "1") != "0"
+ADMIN_USERNAME = os.environ.get("HALITE_ADMIN", "cmander").lower()
 MAX_UNPACKED = 20 * 1024 * 1024
 MAX_USER_UPLOAD = 256 * 1024 * 1024
 MAX_MATCHES_PER_DAY = 500

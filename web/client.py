@@ -50,6 +50,12 @@ def main():
     upload.add_argument("--name", required=True)
     upload.add_argument("--version", required=True)
     upload.add_argument("--notes", default="")
+    upload.add_argument("--trace", required=True, help="conversation trace that produced this version (JSONL / JSON / text, .gz ok)")
+    upload.add_argument("--model", default="unknown", help="catalog id, see `catalog`")
+    upload.add_argument("--effort", default="unknown")
+    upload.add_argument("--harness", default="unknown")
+    upload.add_argument("--rank", action="store_true", help="submit the new version to the public evaluation")
+    commands.add_parser("catalog")
     test = commands.add_parser("test")
     test.add_argument("--versions")
     test.add_argument("--bots")
@@ -94,6 +100,9 @@ def main():
         raise SystemExit("Run login first or set HALITE_TOKEN.")
     if args.action == "bots":
         result, _ = request(origin, "/bots", token)
+    elif args.action == "catalog":
+        result, _ = request(origin, "/catalog", token)
+        result = {kind: [e["id"] for e in entries] for kind, entries in result.items()}
     elif args.action == "status":
         result, _ = request(
             origin, "/tests" + ("/" + args.job if args.job else ""), token
@@ -128,6 +137,10 @@ def main():
         data = file.read_bytes()
         if len(data) > 5 * 1024**2:
             raise SystemExit("Upload limit: 5 MiB.")
+        trace = Path(args.trace)
+        trace_data = trace.read_bytes()
+        if len(trace_data) > 16 * 1024**2:
+            raise SystemExit("Trace limit: 16 MiB (gzip it first).")
         bots, _ = request(origin, "/bots", token)
         bot = next(
             (b for b in bots["bots"] if b["owned"] and b["name"] == args.name), None
@@ -138,16 +151,20 @@ def main():
             )
         boundary = "halite3-" + secrets.token_hex(16)
         parts = []
-        for key, value in [("version", args.version), ("notes", args.notes)]:
+        fields = [("version", args.version), ("notes", args.notes), ("model", args.model),
+                  ("effort", args.effort), ("harness", args.harness), ("rank", "true" if args.rank else "false")]
+        for key, value in fields:
             parts.append(
                 f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
             )
-        filename = file.name.replace('"', "").replace("\r", "").replace("\n", "")
-        parts += [
-            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode(),
-            data,
-            f"\r\n--{boundary}--\r\n".encode(),
-        ]
+        for field, path, content in [("file", file, data), ("trace", trace, trace_data)]:
+            filename = path.name.replace('"', "").replace("\r", "").replace("\n", "")
+            parts += [
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode(),
+                content,
+                b"\r\n",
+            ]
+        parts.append(f"--{boundary}--\r\n".encode())
         result, _ = request(
             origin,
             f"/bots/{bot['id']}/versions",
