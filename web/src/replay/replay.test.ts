@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeReplay, wrappedDistance } from "./replay";
-import type { Frame, Replay } from "./types";
+import type { Frame, Replay } from "@/lib/types";
 const frame = (overrides: Partial<Frame>): Frame => ({
   cells: [],
   entities: {},

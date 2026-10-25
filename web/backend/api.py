@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from . import settings as S
 from .db import connect, initialize, now
+from . import profiles
 from .security import (
     COOKIE,
     PASSWORDS,
@@ -59,6 +60,7 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
 )
+app.include_router(profiles.router)
 
 
 @app.middleware("http")
@@ -92,7 +94,9 @@ async def protection(request, call_next):
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )
-    if request.url.path.startswith("/api/"):
+    if request.url.path.startswith("/api/") and not request.url.path.startswith(
+        "/api/avatars/"
+    ):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -177,14 +181,16 @@ def register(payload: Credentials, request: Request, response: Response):
     user_id = str(uuid.uuid4())
     try:
         with connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             db.execute(
-                "INSERT INTO users(id,username,display_name,password_hash,created_at) VALUES(?,?,?,?,?)",
+                "INSERT INTO users(id,username,display_name,password_hash,created_at,avatar_pattern) VALUES(?,?,?,?,?,?)",
                 (
                     user_id,
                     username,
                     payload.display_name.strip() or username,
                     hashed,
                     now(),
+                    profiles.new_pattern(db),
                 ),
             )
     except sqlite3.IntegrityError:
@@ -195,6 +201,7 @@ def register(payload: Credentials, request: Request, response: Response):
             "id": user_id,
             "username": username,
             "display_name": payload.display_name.strip() or username,
+            "avatar_version": 0,
         }
     }
 
@@ -215,7 +222,12 @@ def login(payload: Credentials, request: Request, response: Response):
     if not valid or not user:
         raise HTTPException(401, "用户名或密码不正确。")
     set_session(response, user["id"], request.cookies.get(COOKIE))
-    return {"user": {key: user[key] for key in ["id", "username", "display_name"]}}
+    return {
+        "user": {
+            key: user[key]
+            for key in ["id", "username", "display_name", "avatar_version"]
+        }
+    }
 
 
 @app.post("/api/auth/logout")
@@ -579,6 +591,13 @@ def match_detail(match_id: str, request: Request):
         row = get_match(db, match_id, user["id"] if user else None)
         item = match_dict(row)
         item["can_view_logs"] = bool(user and row["owner_id"] == user["id"])
+        item["players"] = [
+            dict(r)
+            for r in db.execute(
+                "SELECT * FROM match_players WHERE match_id=? ORDER BY seat",
+                (match_id,),
+            )
+        ]
         item["attempt_history"] = [
             dict(r)
             for r in db.execute(
@@ -652,6 +671,7 @@ def leaderboard():
                     "bot_name": row["bot_name"],
                     "version": row["version"],
                     "author": row["author"],
+                    "author_id": row["owner_id"],
                     "games": 12,
                     "wins": wins,
                     "win_rate": rate,

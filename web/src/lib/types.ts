@@ -2,6 +2,66 @@ export interface User {
   id: string;
   username: string;
   display_name: string;
+  avatar_version?: number;
+}
+export interface Profile extends User {
+  avatar_version: number;
+  has_custom_avatar: boolean;
+  created_at: number;
+  bots: number;
+  versions: number;
+  stats: { games: number; wins: number; kills: number; deaths: number; robbed: number; delivered: number };
+}
+export interface PlayerStats {
+  seat: number;
+  version_id: string;
+  author_id: string | null;
+  rank: number;
+  score: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  robbed: number;
+  lost: number;
+  delivered: number;
+  mined: number;
+  territory: number;
+  ships_built: number;
+  dropoffs: number;
+}
+export interface BoardEntry {
+  version_id: string;
+  version: string;
+  bot_name: string;
+  builtin: number;
+  author: string | null;
+  author_id: string | null;
+  games: number;
+  wins: number;
+  win_rate: number;
+  avg_rank: number;
+  score: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  kda: number;
+  robbed: number;
+  robbed_per_game: number;
+  lost: number;
+  delivered: number;
+  mined: number;
+  territory: number;
+  ships_built: number;
+}
+export interface Summary {
+  users: number;
+  bots: number;
+  versions: number;
+  matches: number;
+  pending: number;
+  wrecks: number;
+  delivered: number;
+  daily: { day: number; matches: number }[];
 }
 export interface Version {
   id: string;
@@ -32,6 +92,8 @@ export interface Seat {
   builtin: number;
   bot_id: string;
   filename: string;
+  author_id?: string | null;
+  language?: string;
 }
 export interface MatchResult {
   stats: Record<string, { rank: number; score: number }>;
@@ -55,6 +117,7 @@ export interface Match {
   created_at: number;
   finished_at: number | null;
   can_view_logs?: boolean;
+  players?: PlayerStats[];
   attempt_history?: { number: number; status: string; error: string | null }[];
 }
 export interface Job {
@@ -76,6 +139,7 @@ export interface Health {
 }
 export interface LeaderEntry {
   version_id: string;
+  author_id: string | null;
   bot_name: string;
   version: string;
   author: string;

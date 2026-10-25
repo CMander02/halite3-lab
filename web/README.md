@@ -4,7 +4,12 @@
 
 ## 目录
 
-- `src/`：React + Vite 页面、移动端布局、Canvas 回放播放器。
+- `src/`：React + Vite + Tailwind v4 页面。设计语言为“Pixel Odyssey 日间版”：米白底 + 蓝色像素、Fusion Pixel 等宽像素字、零圆角、阶梯切角按钮、Bayer 抖动。组件用 shadcn/ui（Radix），图标用 pixelarticons（`@nsmr/pixelart-react`），图表用 Recharts（shadcn chart 封装）。
+  - `src/components/ShipLaunch.tsx`：首页 / 登录页轮换的像素发射动画（6 种船型，月相随轮次推进）。
+  - `src/replay/`：回放页与 Canvas 棋盘（抖动矿量、按移动方向旋转的船、迷雾视角、沉船标记）。桌面端 100% 缩放不滚动即可看完整战况和进度条；手机端首屏为棋盘 + 全部玩家 + 控制条，下滑查看数据与近期对战。
+- `backend/profiles.py`：头像（注册即分配全站唯一的 8×8 对角对称像素头像，可上传 PNG 替换 / 恢复默认）、显示名称、`/api/leaderboard/stats` 子榜、`/api/summary`。
+- `backend/analytics.py`：从回放计算每局每座位的击沉 / 被击沉 / 同归、抢劫与损失货物、搬运、采矿、圈地（`match_players` 表），新比赛完成时写入，启动时回填旧比赛。
+- `CAPACITY.md`：42 个版本规模下的赛程、耗时与回放存储（含 D1）估算。
 - `backend/`：FastAPI、Argon2id 账号、会话、API Token、SQLite 任务队列、编译缓存。
 - `runner/sandbox.py`：原生 Python / C++ 进程的 Bubblewrap 与 systemd scope 启动器；不使用 Docker 执行 bot。
 - `examples/cpp/main.cpp`：适配改版观测协议的 C++ 示例。
