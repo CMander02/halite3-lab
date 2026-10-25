@@ -31,7 +31,7 @@ npm run dev
 
 引擎沿用项目根目录 `build/halite`，编译方法见上层 README。原生 bot 执行需要 Ubuntu/Linux、systemd 用户管理器、g++、nlohmann-json3-dev、Bubblewrap。Ubuntu 24.04 需要为实际使用的 Bubblewrap 二进制添加精确的 AppArmor userns 规则，参考 `deploy/halite3-bwrap.apparmor`；不要全局关闭用户命名空间的 AppArmor 限制。
 
-正式机使用 `/usr/local/lib/halite3/bwrap` 与 `/usr/bin/g++`。运行时只映射只读系统库和当前版本目录，不映射服务器 home、账号数据库或其他 bot 文件。独立 PID、网络、IPC 等命名空间，清空环境变量，禁止嵌套 userns。每个 bot 进程 scope 限制 192 MiB 内存、35% 单核 CPU、32 个任务和 105 秒；临时目录 16 MiB，编译阶段限制 512 MiB、75% 单核和 60 秒。单场比赛 100 秒。全局一次执行一场比赛，按用户轮转调度。
+正式机使用 `/usr/local/lib/halite3/bwrap` 与 `/usr/bin/g++`。运行时只映射只读系统库和当前版本目录，不映射服务器 home、账号数据库或其他 bot 文件。独立 PID、网络、IPC 等命名空间，清空环境变量，禁止嵌套 userns。每个 bot 进程 scope 限制 192 MiB 内存、35% 单核 CPU、32 个任务和 105 秒；临时目录 16 MiB，编译阶段限制 512 MiB、75% 单核和 60 秒。单场比赛 100 秒。编译错误会保存并作为确定性失败处理，同一源码不重复编译重试。全局一次执行一场比赛，按用户轮转调度。
 
 ## Bot 文件与最新版本
 
