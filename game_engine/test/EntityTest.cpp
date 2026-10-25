@@ -1,4 +1,5 @@
 #include <sstream>
+#include "nlohmann/json.hpp"
 
 #ifdef __clang__
 #pragma clang diagnostic push

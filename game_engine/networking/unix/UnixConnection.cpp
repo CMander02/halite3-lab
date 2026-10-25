@@ -1,3 +1,6 @@
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #include <algorithm>
 #include <chrono>
 #include <csignal>
@@ -55,6 +58,10 @@ UnixConnection::UnixConnection(const std::string &command, NetworkingConfig conf
     if (pid == 0) {
         // This is the child
         setpgid(getpid(), getpid());
+#ifdef __linux__
+        // A killed engine must not leave its directly launched bot running.
+        CHECK(prctl(PR_SET_PDEATHSIG, SIGKILL));
+#endif
         if (getppid() != ppid_before_fork) {
             throw NetworkingError("fork failed");
         }

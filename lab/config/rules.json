@@ -1,0 +1,7 @@
+{
+  "LAB_PROTOCOL": true,
+  "FOG_ENABLED": true,
+  "VISION_RADIUS": 4,
+  "REEF_PERCENT": 12,
+  "LIGHT_SHIP_COLLISIONS": true
+}

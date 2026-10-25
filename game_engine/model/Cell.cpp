@@ -21,6 +21,7 @@ std::ostream &operator<<(std::ostream &ostream, const Cell &cell) {
  */
 void to_json(nlohmann::json &json, const Cell &cell) {
     json = {FIELD_TO_JSON(energy)};
+    if (cell.reef) json["reef"] = true;
 }
 
 }

@@ -1,0 +1,77 @@
+{
+  "engine": "build/halite",
+  "rules": "lab/config/rules.json",
+  "width": 32,
+  "height": 32,
+  "turns": 200,
+  "seeds": [
+    11
+  ],
+  "modes": [
+    4
+  ],
+  "rotate_seats": false,
+  "timeout": 120,
+  "bots": [
+    {
+      "name": "baseline-v1",
+      "command": [
+        "python3",
+        "lab/bots/baseline.py",
+        "--return-at",
+        "400",
+        "--fleet",
+        "8"
+      ],
+      "sources": [
+        "lab/bots/baseline.py",
+        "lab/bots/common.py"
+      ]
+    },
+    {
+      "name": "baseline-v2",
+      "command": [
+        "python3",
+        "lab/bots/baseline.py",
+        "--return-at",
+        "500",
+        "--fleet",
+        "10"
+      ],
+      "sources": [
+        "lab/bots/baseline.py",
+        "lab/bots/common.py"
+      ]
+    },
+    {
+      "name": "raider-v1",
+      "command": [
+        "python3",
+        "lab/bots/raider.py",
+        "--return-at",
+        "400",
+        "--fleet",
+        "8"
+      ],
+      "sources": [
+        "lab/bots/raider.py",
+        "lab/bots/common.py"
+      ]
+    },
+    {
+      "name": "raider-v2",
+      "command": [
+        "python3",
+        "lab/bots/raider.py",
+        "--return-at",
+        "500",
+        "--fleet",
+        "10"
+      ],
+      "sources": [
+        "lab/bots/raider.py",
+        "lab/bots/common.py"
+      ]
+    }
+  ]
+}

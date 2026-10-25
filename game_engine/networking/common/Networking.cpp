@@ -6,6 +6,7 @@
 #include "Replay.hpp"
 #include "Logging.hpp"
 #include "BotError.hpp"
+#include "Observation.hpp"
 
 namespace net {
 
@@ -84,6 +85,15 @@ void Networking::initialize_player(Player &player) {
     }
     // Send the map
     message_stream << game.map;
+    if (Constants::get().LAB_PROTOCOL) {
+        nlohmann::json init = make_observation(game.map, game.store, player.id, 0);
+        init["type"] = "init";
+        constants.erase("game_seed"); // Do not reveal a seed that reconstructs hidden resources.
+        init["constants"] = constants;
+        init["protocol"] = "halite3-lab-v1";
+        message_stream.str(""); message_stream.clear();
+        message_stream << init.dump() << std::endl;
+    }
 
     try {
         connections.get(player.id)->send_string(message_stream.str());
@@ -137,6 +147,10 @@ std::vector<std::unique_ptr<Command>> Networking::handle_frame(Player &player) {
         message_stream << location << " " << game.map.at(location).energy << std::endl;
     }
 
+    if (Constants::get().LAB_PROTOCOL) {
+        message_stream.str(""); message_stream.clear();
+        message_stream << make_observation(game.map, game.store, player.id, game.turn_number).dump() << std::endl;
+    }
     std::vector<std::unique_ptr<Command>> commands;
     std::string received_input;
     try {

@@ -518,3 +518,8 @@ xcuserdata/
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint
+
+# Local experiment data
+agentspace/
+lab/runs/
+.venv/

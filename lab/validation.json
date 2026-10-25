@@ -1,0 +1,210 @@
+{
+  "date": "2026-10-25T16:38:59",
+  "engine_sha256": "0b9fa67857cb1f3d32f42a94fb141b7fc527a17ed851e4f96966c01a012b6234",
+  "tests": {
+    "ctest": 11,
+    "python": 26
+  },
+  "runs": {
+    "duel-release": {
+      "matches": {
+        "complete": 6
+      },
+      "turns": 200,
+      "seeds": [
+        11,
+        29,
+        47
+      ],
+      "rotate_seats": true,
+      "attempts": 6,
+      "provenance": {
+        "build/halite": "0b9fa67857cb1f3d32f42a94fb141b7fc527a17ed851e4f96966c01a012b6234",
+        "lab/arena.py": "ee4942ed6b492da4ec56dc79d293d65cfcc861763804dd201d9dab44f7b45b3d",
+        "lab/bots/baseline.py": "41e4f9dd7fb17d0b3652ac9479e40558eab75c8bb9a09dad0cbdb43996b0b3b1",
+        "lab/bots/common.py": "2dfa817edec1edd9d4aecb0d6e540ffec6115e310e7fcb5f470ecd44cd86c2ad",
+        "lab/bots/raider.py": "49b515933f0120b423e4d59e8974f527a040d0d5df1992e5f5c66ac494e49065",
+        "lab/config/rules.json": "ee42947db55483b9f3619d617c43786fcd44458d5cae56fa1606bf187af60b4a",
+        "lab/launch.py": "27d16e06d985f9a6dc606b644c99e022839b0bf88d3e3a47b2ea64a42bb8e51c"
+      },
+      "standings": [
+        {
+          "mode": 2,
+          "bot": "baseline",
+          "games": 6,
+          "win_rate": 0.0,
+          "mean_score": 18395.166666666668,
+          "mean_rank": 2.0
+        },
+        {
+          "mode": 2,
+          "bot": "raider",
+          "games": 6,
+          "win_rate": 1.0,
+          "mean_score": 20860.833333333332,
+          "mean_rank": 1.0
+        }
+      ]
+    },
+    "smoke10-release": {
+      "matches": {
+        "complete": 300
+      },
+      "turns": 8,
+      "seeds": [
+        11
+      ],
+      "rotate_seats": false,
+      "attempts": 300,
+      "provenance": {
+        "build/halite": "0b9fa67857cb1f3d32f42a94fb141b7fc527a17ed851e4f96966c01a012b6234",
+        "lab/arena.py": "ee4942ed6b492da4ec56dc79d293d65cfcc861763804dd201d9dab44f7b45b3d",
+        "lab/bots/baseline.py": "41e4f9dd7fb17d0b3652ac9479e40558eab75c8bb9a09dad0cbdb43996b0b3b1",
+        "lab/bots/common.py": "2dfa817edec1edd9d4aecb0d6e540ffec6115e310e7fcb5f470ecd44cd86c2ad",
+        "lab/bots/raider.py": "49b515933f0120b423e4d59e8974f527a040d0d5df1992e5f5c66ac494e49065",
+        "lab/config/rules.json": "ee42947db55483b9f3619d617c43786fcd44458d5cae56fa1606bf187af60b4a",
+        "lab/launch.py": "27d16e06d985f9a6dc606b644c99e022839b0bf88d3e3a47b2ea64a42bb8e51c"
+      }
+    },
+    "ffa4-release": {
+      "matches": {
+        "complete": 1
+      },
+      "turns": 200,
+      "seeds": [
+        11
+      ],
+      "rotate_seats": false,
+      "attempts": 1,
+      "provenance": {
+        "build/halite": "0b9fa67857cb1f3d32f42a94fb141b7fc527a17ed851e4f96966c01a012b6234",
+        "lab/arena.py": "ee4942ed6b492da4ec56dc79d293d65cfcc861763804dd201d9dab44f7b45b3d",
+        "lab/bots/baseline.py": "41e4f9dd7fb17d0b3652ac9479e40558eab75c8bb9a09dad0cbdb43996b0b3b1",
+        "lab/bots/common.py": "2dfa817edec1edd9d4aecb0d6e540ffec6115e310e7fcb5f470ecd44cd86c2ad",
+        "lab/bots/raider.py": "49b515933f0120b423e4d59e8974f527a040d0d5df1992e5f5c66ac494e49065",
+        "lab/config/rules.json": "ee42947db55483b9f3619d617c43786fcd44458d5cae56fa1606bf187af60b4a",
+        "lab/launch.py": "27d16e06d985f9a6dc606b644c99e022839b0bf88d3e3a47b2ea64a42bb8e51c"
+      },
+      "standings": [
+        {
+          "mode": 4,
+          "bot": "baseline-v1",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 9835.0,
+          "mean_rank": 3.0
+        },
+        {
+          "mode": 4,
+          "bot": "baseline-v2",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 8458.0,
+          "mean_rank": 4.0
+        },
+        {
+          "mode": 4,
+          "bot": "raider-v1",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 10286.0,
+          "mean_rank": 2.0
+        },
+        {
+          "mode": 4,
+          "bot": "raider-v2",
+          "games": 1,
+          "win_rate": 1.0,
+          "mean_score": 11302.0,
+          "mean_rank": 1.0
+        }
+      ]
+    },
+    "ffa8-release": {
+      "matches": {
+        "complete": 1
+      },
+      "turns": 200,
+      "seeds": [
+        11
+      ],
+      "rotate_seats": false,
+      "attempts": 1,
+      "provenance": {
+        "build/halite": "0b9fa67857cb1f3d32f42a94fb141b7fc527a17ed851e4f96966c01a012b6234",
+        "lab/arena.py": "ee4942ed6b492da4ec56dc79d293d65cfcc861763804dd201d9dab44f7b45b3d",
+        "lab/bots/baseline.py": "41e4f9dd7fb17d0b3652ac9479e40558eab75c8bb9a09dad0cbdb43996b0b3b1",
+        "lab/bots/common.py": "2dfa817edec1edd9d4aecb0d6e540ffec6115e310e7fcb5f470ecd44cd86c2ad",
+        "lab/bots/raider.py": "49b515933f0120b423e4d59e8974f527a040d0d5df1992e5f5c66ac494e49065",
+        "lab/config/rules.json": "ee42947db55483b9f3619d617c43786fcd44458d5cae56fa1606bf187af60b4a",
+        "lab/launch.py": "27d16e06d985f9a6dc606b644c99e022839b0bf88d3e3a47b2ea64a42bb8e51c"
+      },
+      "standings": [
+        {
+          "mode": 8,
+          "bot": "baseline-v1",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 4021.0,
+          "mean_rank": 6.0
+        },
+        {
+          "mode": 8,
+          "bot": "baseline-v2",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 10081.0,
+          "mean_rank": 5.0
+        },
+        {
+          "mode": 8,
+          "bot": "baseline-v3",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 2687.0,
+          "mean_rank": 8.0
+        },
+        {
+          "mode": 8,
+          "bot": "baseline-v4",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 3194.0,
+          "mean_rank": 7.0
+        },
+        {
+          "mode": 8,
+          "bot": "raider-v1",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 12291.0,
+          "mean_rank": 4.0
+        },
+        {
+          "mode": 8,
+          "bot": "raider-v2",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 13227.0,
+          "mean_rank": 3.0
+        },
+        {
+          "mode": 8,
+          "bot": "raider-v3",
+          "games": 1,
+          "win_rate": 1.0,
+          "mean_score": 17579.0,
+          "mean_rank": 1.0
+        },
+        {
+          "mode": 8,
+          "bot": "raider-v4",
+          "games": 1,
+          "win_rate": 0.0,
+          "mean_score": 16959.0,
+          "mean_rank": 2.0
+        }
+      ]
+    }
+  }
+}

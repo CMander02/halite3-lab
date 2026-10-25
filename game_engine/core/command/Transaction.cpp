@@ -47,6 +47,42 @@ void dump_energy(Store &store, Entity &entity, const Location &location, Cell &c
     dump_energy(store, location, cell, energy);
 }
 
+// Returns the unique lightest ship, or None when the lightest weight ties.
+Entity::id_type collision_survivor(const Store &store, const std::vector<Entity::id_type> &ships) {
+    if (!Constants::get().LIGHT_SHIP_COLLISIONS) return Entity::None;
+    auto survivor = ships.front();
+    auto minimum = store.get_entity(survivor).energy;
+    bool tied = false;
+    for (size_t i = 1; i < ships.size(); ++i) {
+        auto weight = store.get_entity(ships[i]).energy;
+        if (weight < minimum) { survivor = ships[i]; minimum = weight; tied = false; }
+        else if (weight == minimum) tied = true;
+    }
+    return tied ? Entity::None : survivor;
+}
+
+// Tied wrecks always become ground halite, even over structures. Captures respect capacity.
+void settle_collision(Store &store, Cell &cell, const Location &location,
+                      const std::vector<Entity::id_type> &destroyed, Entity::id_type survivor) {
+    energy_type loot = 0;
+    for (const auto &id : destroyed) {
+        auto &entity = store.get_entity(id);
+        if (Constants::get().LIGHT_SHIP_COLLISIONS) loot += entity.energy;
+        else dump_energy(store, entity, location, cell, entity.energy);
+        store.delete_entity(id);
+    }
+    if (survivor != Entity::None) {
+        auto &winner = store.get_entity(survivor);
+        const auto gained = std::min(loot, Constants::get().MAX_ENERGY - winner.energy);
+        winner.energy += gained;
+        loot -= gained;
+        store.get_player(winner.owner).add_entity(survivor, location);
+    }
+    cell.energy += loot;
+    store.map_total_energy += loot;
+    cell.entity = survivor;
+}
+
 /**
  * Check if the transaction may be committed without actually committing.
  * @return False if the transaction may not be committed.
@@ -182,6 +218,10 @@ void MoveTransaction::commit() {
                                                                       required, !Constants::get().STRICT_ERRORS);
                 continue;
             }
+            auto target = location;
+            map.move_location(target, command.direction);
+            // A blocked move is a hold: no movement cost, and normal mining.
+            if (map.at(target).reef) continue;
             causes.emplace(command.entity, command);
             // Decrease the entity's energy.
             entity.energy -= required;
@@ -210,13 +250,14 @@ void MoveTransaction::commit() {
     for (auto &[destination, entities] : destinations) {
         auto &cell = map.at(destination);
         if (entities.size() > MAX_ENTITIES_PER_CELL) {
-            // Destroy all interested entities and collect them in replay info
+            const auto survivor = collision_survivor(store, entities);
+            // Replay collision events contain destroyed ships only.
             std::vector<Entity::id_type> collision_ids;
             id_map<Player, std::vector<Entity::id_type>> self_collisions;
             id_map<Player, std::deque<std::reference_wrapper<const MoveCommand>>> self_collision_commands;
             for (auto &entity_id : entities) {
                 auto &entity = store.get_entity(entity_id);
-                collision_ids.push_back(entity_id);
+                if (entity_id != survivor) collision_ids.push_back(entity_id);
                 self_collisions[entity.owner].emplace_back(entity_id);
                 if (auto cause = causes.find(entity_id); cause != causes.end()) {
                     self_collision_commands[entity.owner].emplace_back(cause->second);
@@ -240,13 +281,8 @@ void MoveTransaction::commit() {
             // When generating the event, HaliteImpl will record
             // statistics.
             event_generated<CollisionEvent>(destination, collision_ids);
-            // Now we can delete the entities.
-            for (const auto &entity_id : collision_ids) {
-                auto &entity = store.get_entity(entity_id);
-                // Dump the energy.
-                dump_energy(store, entity, destination, cell, entity.energy);
-                store.delete_entity(entity_id);
-            }
+            settle_collision(store, cell, destination, collision_ids, survivor);
+            if (survivor != Entity::None) entity_updated(survivor);
 
             cell_updated(destination);
         } else {
@@ -317,16 +353,15 @@ void SpawnTransaction::commit() {
                                                                       std::vector<Entity::id_type>{cell.entity, entity.id},
                                                                       !Constants::get().STRICT_ERRORS);
                 }
-                event_generated<CollisionEvent>(owner.factory, std::vector<Entity::id_type>{cell.entity, entity.id});
-
-                // Use dump_energy in case the collision was from a
-                // different player.
-                dump_energy(store, existing_entity, owner.factory, cell, existing_entity.energy);
+                const std::vector<Entity::id_type> ships{cell.entity, entity.id};
+                const auto survivor = collision_survivor(store, ships);
+                std::vector<Entity::id_type> destroyed;
+                for (const auto &id : ships) if (id != survivor) destroyed.push_back(id);
+                event_generated<CollisionEvent>(owner.factory, destroyed);
                 existing_player.remove_entity(cell.entity);
-                store.delete_entity(cell.entity);
                 player.remove_entity(entity.id);
-                store.delete_entity(entity.id);
-                cell.entity = Entity::None;
+                settle_collision(store, cell, owner.factory, destroyed, survivor);
+                if (survivor != Entity::None) entity_updated(survivor);
             }
         }
     }
