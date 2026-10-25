@@ -523,3 +523,12 @@ xcuserdata/
 agentspace/
 lab/runs/
 .venv/
+
+# Web service local state
+web/.venv/
+web/.wrangler/
+web/.dev.vars
+web/dist/
+web/data/
+
+.wrangler/
