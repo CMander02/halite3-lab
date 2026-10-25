@@ -66,8 +66,8 @@ users/<user-id>/bots/<bot-id>/
 
 ```bash
 python3 web/client.py login
-python3 web/client.py upload MyBot.cpp --name my-cpp --version 1.0
-python3 web/client.py upload MyBot.zip --name my-python --version 1.1
+python3 web/client.py upload MyBot.cpp --name my-cpp --version 1.0 --trace session.jsonl --model claude-opus-5-5 --effort high --harness claude-code
+python3 web/client.py upload MyBot.zip --name my-python --version 1.1 --trace session.jsonl.gz
 python3 web/client.py bots
 python3 web/client.py test --bots <my-bot-id>,builtin-baseline --modes 2 --seeds 11,29,47 --rotate
 python3 web/client.py status <job-id>
@@ -77,6 +77,24 @@ python3 web/client.py rank <version-id>
 CLI 将 Token 保存在 `~/.config/halite3/credentials.json`，权限 0600。也可设置 `HALITE_TOKEN`；Token 不接受 URL 查询参数，30 天到期，可在账号页面撤销。网页会话有效 7 天，使用 HttpOnly、Secure、SameSite=Lax Cookie。密码为带独立盐的 Argon2id 哈希。写操作校验 Origin，CLI Bearer 请求按账号授权。
 
 主要接口：`POST /api/auth/register`、`POST /api/auth/login`、`GET/POST /api/bots`、`POST /api/bots/{id}/versions`、`POST /api/tests`、`GET /api/tests/{id}`、`GET /api/matches`、`GET /api/matches/{id}/replay`、`GET /api/leaderboard`。接口结构见 `/api/openapi.json`。
+
+## 管理员、对话轨迹与 ELO 修正
+
+- **唯一管理员**：`HALITE_ADMIN`（默认 `cmander`）对应的账号在启动迁移时设为管理员，其他账号的管理员标记会被清除；`users_single_admin` 部分唯一索引保证全站最多一个管理员。`/admin` 页面与 `/api/admin/*` 接口提供：用户列表、停用/启用（同时撤销会话与 Token、取消排队中的私人对局）、重置临时密码、强制下线；提交审核（人工确认模型 / 推理 / 平台、重新检测、下载轨迹）；以及模型、推理强度、平台三张目录的 ELO 修正和识别规则。
+- **上传必须附带对话轨迹**：`POST /api/bots/{id}/versions` 需要 `file`（bot 源码）和 `trace`（生成它的对话），可选 `model` / `effort` / `harness`（`GET /api/catalog` 中的 id）和 `rank=true`（上传后直接参加 12 场基准评测）。轨迹最多 16 MiB，支持 gzip / zip，gzip 后保存在版本目录的 `trace.gz`，只有作者和管理员能下载（`GET /api/versions/{id}/trace`）。设置 `HALITE_REQUIRE_TRACE=0` 可关闭强制要求。
+- **检测**（`backend/detect.py`）：优先读取结构化字段——Claude Code 会话 JSONL 的 `message.model`、`api-request.params.output_config.effort` 与会话签名；Codex rollout 的 `session_meta.originator`、`turn_context.model/effort`；其他 JSON 导出里的 `model` / `effort` 类字段；最后才退回到全文正则（置信度最低）。同时统计消息数、输出 token 和首末时间戳（用时）。
+- **计分采用的配置**（`backend/rating.py::attribution`）：管理员确认优先；否则使用用户声明，但若检测置信度为中/高且检测到的配置修正更大，则改用检测结果——少报不能换来加分。
+- **ELO**：对全部公开且完成的对局做 Bradley–Terry 极大似然拟合，每局按名次两两比较，n 人局每对权重 1/(n−1)，每个版本另有对 1500 锚点的一胜一负先验，结果与对局顺序无关并附近似标准差。**修正后 ELO = 原始 ELO − 模型修正 − 推理修正 − 平台修正**；平台基准不修正、不参与排名。`GET /api/leaderboard/elo` 返回总榜，`GET /api/me/submissions` 返回自己每个版本的声明、检测、计分配置、评测进度、ELO 与名次。
+- **版本管理**：`PATCH /api/versions/{id}`（说明、是否在榜单显示、归档）、`PATCH /api/bots/{id}`（默认版本）。`bot_ids` 提交测试时使用默认版本，未设置时使用最新的未归档版本。
+- 图标来自 [LobeHub Icons](https://lobehub.com/icons/)（MIT），放在 `public/model-icons/`。
+
+CLI 上传示例：
+
+```bash
+python3 web/client.py catalog
+python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
+  --trace ~/.claude/projects/<项目>/<会话>.jsonl --model claude-opus-5-5 --effort high --harness claude-code --rank
+```
 
 ## 比赛、回放与排名
 
