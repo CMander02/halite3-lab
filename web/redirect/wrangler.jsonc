@@ -1,0 +1,12 @@
+{
+  "name":"halite3-redirect",
+  "main":"worker.js",
+  "account_id":"e1148ccd7feefb47dceae30eb5875cf1",
+  "compatibility_date":"2026-10-25",
+  "workers_dev":false,
+  "routes":[
+    {"pattern":"cmander02.com/halite3","zone_name":"cmander02.com"},
+    {"pattern":"cmander02.com/halite3/*","zone_name":"cmander02.com"}
+  ],
+  "observability":{"enabled":true}
+}
