@@ -1,0 +1,355 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource/fusion-pixel-12px-monospaced-sc/400.css";
+
+/*
+ * Halite 3 Arena — "Pixel Odyssey, daylight edition".
+ * Moonshot pixel DNA (1-bit dithering, pixel mono type, zero radius, no shadow,
+ * notched terminal buttons) inverted onto cream paper with blue pixels.
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --paper: #f5f2e9;
+  --paper-2: #fbfaf5;
+  --white: #ffffff;
+  --ink: #0a1a4a;
+  --ink-2: #4b5880;
+  --ink-3: #8a93b0;
+  --line: rgb(10 26 74 / 0.16);
+  --line-2: rgb(10 26 74 / 0.08);
+  --blue: #1f4fff;
+  --blue-700: #1236c8;
+  --blue-300: #8ea8ff;
+  --blue-100: #dce4ff;
+  --blue-50: #edf1ff;
+  --good: #0e8a4f;
+  --bad: #d4321f;
+  --warn: #b7791f;
+  --notch: 4px;
+
+  /* shadcn tokens */
+  --radius: 0px;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper-2);
+  --card-foreground: var(--ink);
+  --popover: var(--paper-2);
+  --popover-foreground: var(--ink);
+  --primary: var(--blue);
+  --primary-foreground: #ffffff;
+  --secondary: var(--blue-50);
+  --secondary-foreground: var(--blue);
+  --muted: var(--blue-50);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--blue-50);
+  --accent-foreground: var(--ink);
+  --destructive: var(--bad);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--blue);
+  --chart-1: #1f4fff;
+  --chart-2: #0a1a4a;
+  --chart-3: #8ea8ff;
+  --chart-4: #f2542d;
+  --chart-5: #0e9f6e;
+}
+
+@theme inline {
+  --font-pixel: "Fusion Pixel 12px Monospaced SC", "SimSun", ui-monospace, monospace;
+  --font-sans: var(--font-pixel);
+  --font-mono: var(--font-pixel);
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-warn: var(--warn);
+  --color-blue: var(--blue);
+  --color-blue-700: var(--blue-700);
+  --color-blue-300: var(--blue-300);
+  --color-blue-100: var(--blue-100);
+  --color-blue-50: var(--blue-50);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --text-xs: 12px;
+  --text-xs--line-height: 18px;
+  --text-sm: 12px;
+  --text-sm--line-height: 20px;
+  --text-base: 12px;
+  --text-base--line-height: 20px;
+  --text-lg: 24px;
+  --text-lg--line-height: 28px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-color: var(--blue-300) transparent;
+  }
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-pixel);
+    font-size: 12px;
+    line-height: 20px;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+    font-smooth: never;
+    text-rendering: optimizeSpeed;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  :focus-visible {
+    outline: 1px solid var(--ink);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--blue);
+    color: #fff;
+  }
+  img,
+  canvas {
+    image-rendering: pixelated;
+  }
+}
+
+/* ---------- pixel primitives ---------- */
+.notch {
+  /* stepped (pixel) corner cut: two 2px stairs per corner */
+  clip-path: polygon(
+    0 4px, 2px 4px, 2px 2px, 4px 2px, 4px 0,
+    calc(100% - 4px) 0, calc(100% - 4px) 2px, calc(100% - 2px) 2px, calc(100% - 2px) 4px, 100% 4px,
+    100% calc(100% - 4px), calc(100% - 2px) calc(100% - 4px), calc(100% - 2px) calc(100% - 2px), calc(100% - 4px) calc(100% - 2px), calc(100% - 4px) 100%,
+    4px 100%, 4px calc(100% - 2px), 2px calc(100% - 2px), 2px calc(100% - 4px), 0 calc(100% - 4px)
+  );
+}
+.pixel-frame {
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  position: relative;
+}
+.pixel-frame.strong {
+  border-color: var(--ink);
+}
+/* little corner ticks, like a terminal window */
+.ticks::before,
+.ticks::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+}
+.ticks::before {
+  left: -1px;
+  top: -1px;
+  border-left: 2px solid var(--blue);
+  border-top: 2px solid var(--blue);
+}
+.ticks::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 2px solid var(--blue);
+  border-bottom: 2px solid var(--blue);
+}
+.dots {
+  background-image: radial-gradient(var(--blue-300) 1px, transparent 1.2px);
+  background-size: 6px 6px;
+}
+.dither-25 {
+  background-image:
+    linear-gradient(45deg, var(--blue-100) 25%, transparent 25%, transparent 75%, var(--blue-100) 75%),
+    linear-gradient(45deg, var(--blue-100) 25%, transparent 25%, transparent 75%, var(--blue-100) 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
+}
+.hairline-top {
+  border-top: 1px solid var(--line);
+}
+.eyebrow {
+  font-size: 12px;
+  color: var(--ink-2);
+  letter-spacing: 0;
+}
+.eyebrow::before {
+  content: "‹ ";
+  color: var(--blue);
+}
+.eyebrow::after {
+  content: " ›";
+  color: var(--blue);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.blink {
+  animation: blink 1.2s steps(2, jump-none) infinite;
+}
+.float-hint {
+  animation: hintFloat 2s ease-in-out infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+@keyframes hintFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.3s cubic-bezier(0, 0, 0.2, 1) both;
+}
+.rise-2 {
+  animation-delay: 0.06s;
+}
+.rise-3 {
+  animation-delay: 0.12s;
+}
+.rise-4 {
+  animation-delay: 0.18s;
+}
+
+/* status pip */
+.pip {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+}
+
+/* scrollbars inside panels */
+.thin-scroll {
+  scrollbar-width: thin;
+}
+
+/* range input as a pixel scrubber */
+input[type="range"].scrubber {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+}
+input[type="range"].scrubber::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+input[type="range"].scrubber::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+input[type="range"].scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 28px;
+  background: var(--ink);
+  border: 2px solid var(--paper);
+  outline: 1px solid var(--ink);
+}
+input[type="range"].scrubber::-moz-range-thumb {
+  width: 10px;
+  height: 26px;
+  border-radius: 0;
+  background: var(--ink);
+  border: 2px solid var(--paper);
+  outline: 1px solid var(--ink);
+}
+
+/* data tables */
+.ptable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ptable th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-2);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ink);
+  white-space: nowrap;
+}
+.ptable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-2);
+  vertical-align: middle;
+}
+.ptable tbody tr:hover td {
+  background: var(--blue-50);
+}
+.ptable .right {
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

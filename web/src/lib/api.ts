@@ -81,13 +81,18 @@ export const date = (value: number) =>
     minute: "2-digit",
     hour12: false,
   });
-export const colors = [
-  "#08b590",
-  "#428dfb",
-  "#e6ab37",
-  "#ed6980",
-  "#a180ed",
-  "#31b7ca",
-  "#f28b4e",
-  "#94b348",
-];
+export const compact = (value: number | undefined) =>
+  value === undefined
+    ? "—"
+    : new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+export const percent = (value: number | undefined, digits = 0) =>
+  value === undefined ? "—" : `${(value * 100).toFixed(digits)}%`;
+export const ago = (value: number) => {
+  const seconds = Math.max(0, Date.now() / 1000 - value);
+  if (seconds < 60) return "刚刚";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`;
+  return date(value);
+};
+export const avatarUrl = (id: string, version?: number) =>
+  `/api/avatars/${id}${version === undefined ? "" : `?v=${version}`}`;

@@ -19,6 +19,7 @@ import uuid
 from . import settings as S
 from .db import connect, initialize, now
 from .storage import disk_check
+from . import analytics
 from .builds import prepare, BotBuildError
 
 log = logging.getLogger("halite3.runner")
@@ -251,6 +252,10 @@ def run_match(match):
                 "UPDATE matches SET status='complete',result_json=?,replay_key=?,finished_at=?,lease_until=NULL,lease_token=NULL,error=NULL WHERE id=? AND lease_token=?",
                 (json.dumps(result), key, now(), match["id"], match["lease_token"]),
             )
+            try:
+                analytics.record(db, match["id"], replay)
+            except Exception:
+                log.exception("analytics_failed id=%s", match["id"])
             db.execute(
                 "UPDATE attempts SET status='complete',finished_at=?,log_key=? WHERE match_id=? AND number=?",
                 (now(), f"logs/{match['id']}.json", match["id"], match["attempts"]),

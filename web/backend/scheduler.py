@@ -37,11 +37,14 @@ def snapshot(row):
 
 
 def public_seat(seat):
-    return {
+    # The author id is public (it only addresses the author's avatar).
+    item = {
         key: value
         for key, value in seat.items()
         if key not in ("object_key", "owner_id")
     }
+    item["author_id"] = seat.get("owner_id")
+    return item
 
 
 def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=False):

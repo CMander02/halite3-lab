@@ -318,3 +318,73 @@ class BackendTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProfileAndAnalyticsTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.old = S.DATA
+        S.DATA = Path(self.temp.name)
+        initialize()
+        self.client = TestClient(app, base_url=S.ORIGIN, headers={"Origin": S.ORIGIN})
+
+    def tearDown(self):
+        self.client.close()
+        S.DATA = self.old
+        self.temp.cleanup()
+
+    def register(self, name):
+        response = self.client.post("/api/auth/register", json={"username": name, "password": PASSWORD})
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()["user"]
+
+    def test_default_avatars_are_unique_and_diagonal_symmetric(self):
+        from backend.profiles import _cells
+        ids = [self.register(f"pilot{i}")["id"] for i in range(3)]
+        with connect() as db:
+            patterns = [db.execute("SELECT avatar_pattern FROM users WHERE id=?", (i,)).fetchone()[0] for i in ids]
+        self.assertEqual(len({p[:9] for p in patterns}), 3)
+        grid = _cells(int(patterns[0][:9], 16))
+        self.assertTrue(all(grid[r][c] == grid[c][r] for r in range(8) for c in range(8)))
+        response = self.client.get(f"/api/avatars/{ids[0]}")
+        self.assertEqual(response.headers["content-type"], "image/svg+xml")
+        self.assertIn("public", response.headers["cache-control"])
+
+    def test_avatar_upload_validation_and_reset(self):
+        user = self.register("painter")
+        bad = self.client.post("/api/me/avatar", files={"file": ("a.png", b"GIF89a" + b"0" * 64, "image/png")})
+        self.assertEqual(bad.status_code, 400)
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x0dIHDR" + (64).to_bytes(4, "big") * 2 + b"\x08\x06\x00\x00\x00" + b"0" * 32
+        ok = self.client.post("/api/me/avatar", files={"file": ("a.png", png, "image/png")})
+        self.assertEqual(ok.status_code, 200, ok.text)
+        self.assertEqual(self.client.get(f"/api/avatars/{user['id']}").headers["content-type"], "image/png")
+        self.assertTrue(self.client.get("/api/me").json()["has_custom_avatar"])
+        self.client.delete("/api/me/avatar")
+        self.assertEqual(self.client.get(f"/api/avatars/{user['id']}").headers["content-type"], "image/svg+xml")
+        renamed = self.client.patch("/api/me", json={"display_name": "像素船长"})
+        self.assertEqual(renamed.status_code, 200)
+        self.assertEqual(self.client.get("/api/session").json()["user"]["display_name"], "像素船长")
+
+    def test_collision_statistics(self):
+        from backend.analytics import analyze
+        ship = lambda x, y, e: {"x": x, "y": y, "energy": e, "is_inspired": False}
+        frames = [
+            {"entities": {}, "events": [], "deposited": {"0": 0, "1": 0}},
+            # turn 1: light ship 1 (player 0) rams heavy ship 2 (player 1) at (2,2)
+            {"entities": {"0": {"1": ship(1, 2, 100)}, "1": {"2": ship(2, 2, 700)}},
+             "events": [{"type": "shipwreck", "location": {"x": 2, "y": 2}, "ships": [2]}], "deposited": {"0": 0, "1": 0}},
+            # turn 2: equal weights sink together
+            {"entities": {"0": {"1": ship(2, 2, 800), "3": ship(5, 5, 0)}, "1": {"4": ship(5, 6, 0)}},
+             "events": [{"type": "shipwreck", "location": {"x": 5, "y": 5}, "ships": [3, 4]}], "deposited": {"0": 0, "1": 0}},
+            {"entities": {"0": {"1": ship(2, 2, 800)}, "1": {}}, "events": [], "deposited": {"0": 900, "1": 50}},
+        ]
+        replay = {"full_frames": frames, "production_map": {"width": 8, "height": 8},
+                  "players": [{"player_id": 0, "factory_location": {"x": 0, "y": 0}}, {"player_id": 1, "factory_location": {"x": 4, "y": 4}}],
+                  "game_statistics": {"player_statistics": [{"player_id": 0, "total_mined": 1000, "ships_spawned": 2, "number_dropoffs": 0}]}}
+        p0, p1 = analyze(replay)
+        self.assertEqual((p0["kills"], p0["deaths"], p0["assists"]), (1, 1, 1))
+        self.assertEqual((p1["kills"], p1["deaths"], p1["assists"]), (0, 2, 1))
+        self.assertEqual(p0["robbed"], 700)
+        self.assertEqual(p1["lost"], 700)
+        self.assertEqual(p0["delivered"], 900)
+        self.assertGreater(p0["territory"], p1["territory"])

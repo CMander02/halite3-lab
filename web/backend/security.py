@@ -55,12 +55,12 @@ def user_for(request: Request, required=True):
         with connect() as db:
             if bearer:
                 row = db.execute(
-                    "SELECT u.id,u.username,u.display_name FROM users u JOIN api_tokens t ON t.user_id=u.id WHERE t.token_hash=? AND t.expires_at>?",
+                    "SELECT u.id,u.username,u.display_name,u.avatar_version FROM users u JOIN api_tokens t ON t.user_id=u.id WHERE t.token_hash=? AND t.expires_at>?",
                     (digest(value), now()),
                 ).fetchone()
             else:
                 row = db.execute(
-                    "SELECT u.id,u.username,u.display_name FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?",
+                    "SELECT u.id,u.username,u.display_name,u.avatar_version FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?",
                     (digest(value), now()),
                 ).fetchone()
     if row:
