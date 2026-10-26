@@ -184,3 +184,70 @@ def download_trace(version_id: str, request: Request):
     name = re.sub(r"[^A-Za-z0-9._-]", "_", (row["trace_filename"] or "trace.jsonl").removesuffix(".gz"))[:80]
     return Response((S.DATA / row["trace_key"]).read_bytes(), media_type="application/octet-stream",
                     headers={"Content-Disposition": f'attachment; filename="{version_id[:8]}-{name}.gz"'})
+
+
+@router.get("/api/bots/{bot_id}/profile")
+def bot_profile(bot_id: str, request: Request):
+    """One bot: its versions in order with global ELO, benchmark tier and contest results.
+
+    The owner and the admin see every version; everyone else sees the versions that
+    are on public record (listed and rated globally, or entered in a contest)."""
+    from .contests import compute, finalists, status as contest_status
+
+    user = user_for(request, False)
+    with connect() as db:
+        bot = db.execute(
+            "SELECT b.*,u.display_name AS author,u.username FROM bots b LEFT JOIN users u ON u.id=b.owner_id WHERE b.id=?", (bot_id,)
+        ).fetchone()
+        if not bot:
+            raise HTTPException(404, "Bot 不存在。")
+        owner = bool(user and (user["id"] == bot["owner_id"] or user["is_admin"]))
+        catalog = C.load(db)
+        elo = {e["version_id"]: e for e in board(db, include_hidden=True)}
+        rows = db.execute("SELECT * FROM versions WHERE bot_id=? ORDER BY created_at,rowid", (bot_id,)).fetchall()
+        entries = {}
+        for e in db.execute(
+            """SELECT e.*,c.slug,c.title,c.finalized_at FROM contest_entries e JOIN contests c ON c.id=e.contest_id
+            JOIN versions v ON v.id=e.version_id WHERE v.bot_id=? ORDER BY e.created_at""", (bot_id,)
+        ):
+            entries.setdefault(e["version_id"], []).append(e)
+        tables, versions = {}, []
+        for row in rows:
+            rated = elo.get(row["id"])
+            public = bool(bot["builtin"]) or (bool(row["listed"]) and not row["archived"] and (rated or row["id"] in entries))
+            if not owner and not public:
+                continue
+            contests = []
+            for e in entries.get(row["id"], []):
+                if e["contest_id"] not in tables:
+                    contest = db.execute("SELECT * FROM contests WHERE id=?", (e["contest_id"],)).fetchone()
+                    frozen = json.loads(contest["standings_json"]) if contest["standings_json"] else None
+                    tables[e["contest_id"]] = (contest, frozen["bench"] if frozen else compute(db, contest, "bench"),
+                                               frozen["final"] if frozen else None,
+                                               finalists(db, contest["id"]).get(e["user_id"]))
+                contest, bench, final, chosen = tables[e["contest_id"]]
+                pick = lambda table: next(({k: r[k] for k in ("elo", "adjusted_elo", "games", "win_rate", "rank")}
+                                           for r in table.get("overall", []) if r["version_id"] == row["id"]), None)
+                contests.append({"contest_id": contest["id"], "slug": contest["slug"], "title": contest["title"],
+                                 "status": contest_status(contest), "seq": e["seq"], "created_at": e["created_at"],
+                                 "current": bool(chosen and chosen["id"] == e["id"]),
+                                 "bench": pick(bench), "final": pick(final) if final else None})
+            attr = None if bot["builtin"] else attribution(row, catalog)
+            versions.append({
+                "id": row["id"], "version": row["version"], "language": row["language"], "notes": row["notes"],
+                "created_at": row["created_at"], "archived": bool(row["archived"]), "listed": bool(row["listed"]),
+                "is_default": bot["default_version_id"] == row["id"],
+                "attribution": {k: {"value": attr[k]["value"], "offset": attr[k]["offset"], "source": attr[k]["source"]} for k in C.KINDS}
+                | {"correction": attr["correction"], "mismatch": attr["mismatch"]} if attr else None,
+                "ranked": ranked_status(db, row["id"]) if owner or public else None,
+                "elo": {key: rated[key] for key in ("elo", "elo_sd", "adjusted_elo", "correction", "rank", "games", "wins", "win_rate", "avg_rank")} if rated else None,
+                "contests": contests,
+            })
+        if not versions and not owner:
+            raise HTTPException(404, "这个 Bot 还没有公开记录。")
+    return {
+        "bot": {"id": bot["id"], "name": bot["name"], "description": bot["description"], "builtin": bool(bot["builtin"]),
+                "author": bot["author"], "author_id": bot["owner_id"], "username": bot["username"], "created_at": bot["created_at"],
+                "owned": bool(user and user["id"] == bot["owner_id"]), "default_version_id": bot["default_version_id"]},
+        "versions": versions,
+    }

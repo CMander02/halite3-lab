@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from . import settings as S
 from .db import connect, initialize, now
-from . import admin, profiles, submissions
+from . import admin, contests, profiles, submissions
 from .security import (
     COOKIE,
     PASSWORDS,
@@ -66,6 +66,7 @@ app = FastAPI(
 app.include_router(profiles.router)
 app.include_router(admin.router)
 app.include_router(submissions.router)
+app.include_router(contests.router)
 
 
 @app.middleware("http")
