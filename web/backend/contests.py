@@ -182,6 +182,17 @@ def finalists(db, contest_id):
     return chosen
 
 
+def current_entries(db, contest):
+    """Entry ids that are ranked: each user's finalist, or in contest #0 (where people
+    keep several different bots) the latest submission of every bot."""
+    if not json.loads(contest["config_json"]).get("practice"):
+        return {e["id"] for e in finalists(db, contest["id"]).values()}
+    return {row["id"] for row in db.execute(
+        """SELECT e.id FROM contest_entries e JOIN versions v ON v.id=e.version_id WHERE e.contest_id=? AND e.seq=(
+        SELECT MAX(x.seq) FROM contest_entries x JOIN versions y ON y.id=x.version_id
+        WHERE x.contest_id=e.contest_id AND x.user_id=e.user_id AND y.bot_id=v.bot_id)""", (contest["id"],))}
+
+
 def admin_id(db):
     row = db.execute("SELECT id FROM users WHERE is_admin=1").fetchone()
     return row["id"] if row else None
@@ -332,7 +343,8 @@ def compute(db, contest, stage):
     ).fetchall()
     entries = {row["version_id"]: row for row in db.execute("SELECT * FROM contest_entries WHERE contest_id=?", (contest["id"],))}
     targets = set(config["targets"])
-    chosen = {e["version_id"] for e in finalists(db, contest["id"]).values()}
+    current = current_entries(db, contest)
+    chosen = {vid for vid, e in entries.items() if e["id"] in current}
     catalog = C.load(db)
     info = version_rows(db, set(entries) | targets)
     users = {row["id"]: row for row in db.execute(
@@ -532,8 +544,8 @@ def my_entries(key: str, request: Request):
         entries = db.execute(
             "SELECT * FROM contest_entries WHERE contest_id=? AND user_id=? ORDER BY seq DESC", (row["id"], user["id"])
         ).fetchall()
-        chosen = finalists(db, row["id"]).get(user["id"])
-        result = [entry_view(db, row, e, bench) | {"current": bool(chosen and chosen["id"] == e["id"])} for e in entries]
+        current = current_entries(db, row)
+        result = [entry_view(db, row, e, bench) | {"current": e["id"] in current} for e in entries]
         if final:
             for item in result:
                 item["final"] = {mode: next((r for r in table if r["version_id"] == item["version_id"]), None) for mode, table in final.items()}

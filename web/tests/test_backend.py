@@ -645,6 +645,8 @@ class BackendTest(unittest.TestCase):
         with connect() as db:
             kind, public = db.execute("SELECT j.kind,MIN(m.public) FROM jobs j JOIN matches m ON m.job_id=j.id WHERE j.id=?", (response.json()["job_id"],)).fetchone()
         self.assertEqual((kind, public, response.json()["games"], response.json()["seq"]), ("ranked", 1, 12, 2))
+        # In #0 every bot's latest submission is ranked, not one per user.
+        self.assertEqual([e["current"] for e in self.a.get("/api/contests/test-0/entries").json()["entries"]], [True, True])
 
     def test_contest_upload_bot_cpp_kit_and_written_rules(self):
         self.account(self.a, S.ADMIN_USERNAME)
