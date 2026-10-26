@@ -84,7 +84,7 @@ export default function Auth({ mode, onDone }: { mode: "login" | "register"; onD
             )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">密码</Label>
-              <Input id="password" name="password" type="password" autoComplete={register ? "new-password" : "current-password"} minLength={12} maxLength={128} required placeholder="至少 12 个字符" />
+              <Input id="password" name="password" type="password" autoComplete={register ? "new-password" : "current-password"} minLength={register ? 12 : 1} maxLength={128} required placeholder={register ? "至少 12 个字符" : "输入现有密码"} />
             </div>
             <ErrorBox message={error} />
           </CardContent>

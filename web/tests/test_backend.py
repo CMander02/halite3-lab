@@ -117,6 +117,30 @@ class BackendTest(unittest.TestCase):
             200,
         )
 
+    def test_legacy_password_login_preserves_creation_policy(self):
+        from backend.security import PASSWORDS
+
+        legacy_password = "legacy42"
+        rejected = self.a.post(
+            "/api/auth/register", json={"username": "legacy", "password": legacy_password}
+        )
+        self.assertEqual(rejected.status_code, 422)
+        user = self.account(self.a, "legacy")
+        with connect() as db:
+            db.execute("UPDATE users SET password_hash=? WHERE id=?", (PASSWORDS.hash(legacy_password), user["id"]))
+        self.a.post("/api/auth/logout")
+        wrong = self.a.post("/api/auth/login", json={"username": "legacy", "password": "wrong42"})
+        self.assertEqual(wrong.status_code, 401)
+        login = self.a.post("/api/auth/login", json={"username": "legacy", "password": legacy_password})
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.json()["user"]["id"], user["id"])
+        changed = self.a.post("/api/me/password", json={"current_password": legacy_password, "new_password": "short42"})
+        self.assertEqual(changed.status_code, 422)
+        for password in ("", "x" * 129):
+            with self.subTest(password_length=len(password)):
+                invalid = self.a.post("/api/auth/login", json={"username": "legacy", "password": password})
+                self.assertEqual(invalid.status_code, 422)
+
     def test_private_sources_and_matches_are_isolated(self):
         self.account(self.a, "alice")
         self.account(self.b, "bob")

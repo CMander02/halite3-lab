@@ -108,8 +108,12 @@ async def protection(request, call_next):
     return response
 
 
-class Credentials(BaseModel):
+class LoginCredentials(BaseModel):
     username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class Credentials(LoginCredentials):
     password: str = Field(min_length=12, max_length=128)
     display_name: str = Field(default="", max_length=40)
 
@@ -215,7 +219,7 @@ def register(payload: Credentials, request: Request, response: Response):
 
 
 @app.post("/api/auth/login")
-def login(payload: Credentials, request: Request, response: Response):
+def login(payload: LoginCredentials, request: Request, response: Response):
     username = payload.username.lower().strip()
     rate_limit(request, "login-ip", 20, 600)
     rate_limit(request, "login-user", 8, 600, username)
