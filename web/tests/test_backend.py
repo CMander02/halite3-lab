@@ -370,6 +370,10 @@ class BackendTest(unittest.TestCase):
         self.assertEqual(attribution["model"]["source"], "detected")
         self.assertEqual(attribution["effort"]["value"], "high")
         self.assertEqual(set(attribution["mismatch"]), {"model", "effort"})
+        # The bot icon follows the detected model, not the under-declared one.
+        listed = next(b for b in self.a.get("/api/bots").json()["bots"] if b["id"] == bot)
+        self.assertEqual(listed["model"], "claude-opus-5-5")
+        self.assertNotIn("detection_json", listed["versions"][0])
         trace = self.a.get(f"/api/versions/{vid}/trace")
         self.assertEqual(trace.status_code, 200)
         self.assertEqual(self.b.get(f"/api/versions/{vid}/trace").status_code, 401)
