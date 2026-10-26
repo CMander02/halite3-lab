@@ -345,6 +345,12 @@ class BackendTest(unittest.TestCase):
         password = self.a.post(f"/api/admin/users/{bob['id']}/password").json()["password"]
         self.assertEqual(self.b.post("/api/auth/login", json={"username": "bob", "password": PASSWORD}).status_code, 401)
         self.assertEqual(self.b.post("/api/auth/login", json={"username": "bob", "password": password}).status_code, 200)
+        wrong = self.b.post("/api/me/password", json={"current_password": "nope", "new_password": "another-long-password"})
+        self.assertEqual(wrong.status_code, 400)
+        changed = self.b.post("/api/me/password", json={"current_password": password, "new_password": "another-long-password"})
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertTrue(self.b.get("/api/session").json()["user"])
+        self.assertEqual(self.b.post("/api/auth/login", json={"username": "bob", "password": "another-long-password"}).status_code, 200)
 
     def test_trace_is_required_detected_and_strongest_setup_counts(self):
         self.account(self.a, "alice")

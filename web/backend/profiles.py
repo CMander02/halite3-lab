@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from . import settings as S
 from .analytics import COLUMNS
 from .db import connect, now
-from .security import user_for
+from .security import COOKIE, PASSWORDS, digest, rate_limit, user_for, verify_password
 
 router = APIRouter()
 GRID = 8
@@ -77,6 +77,28 @@ def migrate(db):
 def profile(row):
     return {'id': row['id'], 'username': row['username'], 'display_name': row['display_name'],
             'avatar_version': row['avatar_version'], 'has_custom_avatar': bool(row['avatar_key'])}
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+@router.post('/api/me/password')
+def change_password(payload: PasswordChange, request: Request):
+    user = user_for(request)
+    rate_limit(request, 'password-change', 8, 600, user['id'])
+    with connect() as db:
+        stored = db.execute('SELECT password_hash FROM users WHERE id=?', (user['id'],)).fetchone()[0]
+    if not verify_password(stored, payload.current_password):
+        raise HTTPException(400, '当前密码不正确。')
+    hashed = PASSWORDS.hash(payload.new_password)
+    current = request.cookies.get(COOKIE)
+    with connect() as db:
+        db.execute('UPDATE users SET password_hash=? WHERE id=?', (hashed, user['id']))
+        # Other browsers are signed out; this session and API tokens stay valid.
+        db.execute('DELETE FROM sessions WHERE user_id=? AND token_hash<>?', (user['id'], digest(current) if current else ''))
+    return {'ok': True}
 
 
 class ProfileUpdate(BaseModel):
