@@ -229,7 +229,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <div>
                 <span className="num text-[24px] leading-[28px] text-blue">{number(count)}</span> 场比赛
-                <div className="text-ink-3">32×32 · 200 回合 · 单任务上限 300 场</div>
+                <div className="text-ink-3">2 / 8 人 32×32 · 200 回合；4 人 48×48 · 300 回合 · 单任务上限 300 场</div>
               </div>
               <Button size="lg" disabled={busy || count === 0 || count > 300 || selected.length > 10 || modes.some((k) => selected.length < k)}>
                 <Play size={14} /> {busy ? "提交中…" : "提交到后端 >"}

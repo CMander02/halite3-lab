@@ -22,6 +22,8 @@ void to_json(nlohmann::json &json, const Constants &constants) {
             FIELD_TO_JSON(VISION_RADIUS),
             FIELD_TO_JSON(REEF_PERCENT),
             FIELD_TO_JSON(LIGHT_SHIP_COLLISIONS),
+            FIELD_TO_JSON(PILEUP_WRECK_SIZE),
+            FIELD_TO_JSON(MIRROR_REEFS),
             FIELD_TO_JSON(STRICT_ERRORS),
 
             FIELD_TO_JSON(MAX_PLAYERS),
@@ -73,6 +75,8 @@ void from_json(const nlohmann::json &json, Constants &constants) {
     constants.VISION_RADIUS = json.value("VISION_RADIUS", constants.VISION_RADIUS);
     constants.REEF_PERCENT = json.value("REEF_PERCENT", constants.REEF_PERCENT);
     constants.LIGHT_SHIP_COLLISIONS = json.value("LIGHT_SHIP_COLLISIONS", constants.LIGHT_SHIP_COLLISIONS);
+    constants.PILEUP_WRECK_SIZE = json.value("PILEUP_WRECK_SIZE", constants.PILEUP_WRECK_SIZE);
+    constants.MIRROR_REEFS = json.value("MIRROR_REEFS", constants.MIRROR_REEFS);
     constants.STRICT_ERRORS = json.value("STRICT_ERRORS", constants.STRICT_ERRORS);
     constants.MAX_PLAYERS = json.value("MAX_PLAYERS", constants.MAX_PLAYERS);
     constants.DEFAULT_MAP_WIDTH = json.value("DEFAULT_MAP_WIDTH", constants.DEFAULT_MAP_WIDTH);
@@ -107,6 +111,9 @@ void from_json(const nlohmann::json &json, Constants &constants) {
     }
     if (constants.VISION_RADIUS < 0 || constants.REEF_PERCENT > 40) {
         throw std::runtime_error("VISION_RADIUS must be nonnegative; REEF_PERCENT must be <= 40");
+    }
+    if (constants.PILEUP_WRECK_SIZE == 1) {
+        throw std::runtime_error("PILEUP_WRECK_SIZE must be 0 (disabled) or at least 2");
     }
 
 }

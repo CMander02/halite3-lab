@@ -13,23 +13,24 @@ RULES = json.loads((ROOT/'lab/config/rules.json').read_text())
 
 
 class RulesTest(unittest.TestCase):
-    def game(self, ships=None, plans=None, rules=None, turns=1, seed=11, players=2, cells=None):
+    def game(self, ships=None, plans=None, rules=None, turns=1, seed=11, players=2, cells=None, width=32, height=16):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         out = Path(temp.name)
         constants = dict(RULES, REEF_PERCENT=0, INSPIRATION_ENABLED=False)
         constants.update(rules or {})
         (out/'rules.json').write_text(json.dumps(constants))
-        args = [str(ENGINE), '--results-as-json', '--no-compression', '--width', '32', '--height', '16',
+        args = [str(ENGINE), '--results-as-json', '--no-compression', '--width', str(width), '--height', str(height),
                 '--turn-limit', str(turns), '--seed', str(seed), '-c', str(out/'rules.json'), '-i', str(out)]
         if ships is not None:
             version = re.search(r'#define HALITE_VERSION "(.*?)"', (ROOT/'game_engine/version.hpp').read_text())[1]
-            grid = [0] * (32*16)
+            grid = [0] * (width*height)
             for (x, y), value in (cells or {}).items():
-                grid[y*32+x] = value
-            snapshot = f'{version};fractal,32,16,{players},{seed};' + ','.join(map(str,grid)) + ',;'
+                grid[y*width+x] = value
+            snapshot = f'{version};fractal,{width},{height},{players},{seed};' + ','.join(map(str,grid)) + ',;'
+            homes = [(0,0),(width//2,0),(0,height//2),(width//2,height//2)]
             for pid in range(players):
-                home = (0,0) if pid == 0 else (16,0)
+                home = homes[pid]
                 entities = ','.join(f'{i}-{x}-{y}-{cargo}' for i,(x,y,cargo) in enumerate(ships[pid]))
                 snapshot += f'{pid};5000;{home[0]}-{home[1]},;{entities};'
             args += ['--from-snapshot', snapshot]
@@ -96,6 +97,70 @@ class RulesTest(unittest.TestCase):
     def test_upstream_collision_switch(self):
         _, replay, _ = self.game([[(9,8,100)],[(10,8,500)]],[{'1':['e']},{}],rules={'LIGHT_SHIP_COLLISIONS':False})
         self.assertEqual(self.final_ships(replay),[])
+
+    def test_pileup_of_unequal_ships_wrecks_all_in_place(self):
+        _, replay, _ = self.game([[(9,8,100),(11,8,300)],[(10,8,500)]],[{'1':['e','w']},{}],rules={'PILEUP_WRECK_SIZE':3})
+        self.assertEqual(self.final_ships(replay),[])
+        self.assertIn({'x':10,'y':8,'production':900},replay['full_frames'][1]['cells'])
+
+    def test_pileup_of_four_players_wrecks_all_in_place(self):
+        ships = [[(9,4,0)],[(11,4,200)],[(10,3,200)],[(10,5,700)]]
+        plans = [{'1':['e']},{'1':['w']},{'1':['s']},{'1':['n']}]
+        _, replay, _ = self.game(ships,plans,players=4,rules={'PILEUP_WRECK_SIZE':3})
+        self.assertEqual(self.final_ships(replay),[])
+        self.assertIn({'x':10,'y':4,'production':1100},replay['full_frames'][1]['cells'])
+        self.assertEqual(len(replay['full_frames'][1]['events'][0]['ships']),4)
+
+    def test_pileup_threshold_keeps_two_ship_capture(self):
+        _, replay, _ = self.game([[(9,8,100)],[(10,8,500)]],[{'1':['e']},{}],rules={'PILEUP_WRECK_SIZE':3})
+        ships = self.final_ships(replay)
+        self.assertEqual((len(ships),ships[0][0],ships[0][1]['energy']),(1,'0',600))
+
+    def test_pileup_on_base_stays_on_ground(self):
+        result, replay, _ = self.game([[(1,0,100),(0,1,300)],[(0,0,0)]],[{'1':['w','n']},{}],rules={'PILEUP_WRECK_SIZE':3})
+        self.assertEqual(self.final_ships(replay),[])
+        self.assertIn({'x':0,'y':0,'production':400},replay['full_frames'][1]['cells'])
+        self.assertEqual(result['stats']['0']['score'],5000)
+
+    def test_invalid_pileup_size_is_rejected(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        rules = Path(temp.name)/'rules.json'
+        rules.write_text(json.dumps(dict(RULES, PILEUP_WRECK_SIZE=1)))
+        proc = subprocess.run([str(ENGINE), '--results-as-json', '-c', str(rules), '-i', temp.name, 'true', 'true'],
+                              cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_mirrored_reefs_match_halite_symmetry(self):
+        for players, width, height in ((2,32,32),(4,48,48),(8,64,32)):
+            with self.subTest(players=players):
+                _, replay, traces = self.game(rules={'REEF_PERCENT':20,'MIRROR_REEFS':True}, players=players, width=width, height=height)
+                terrain = traces[0][0]['terrain']
+                grid = replay['production_map']['grid']
+                factories = sorted(tuple(p['factory_location'].values()) for p in replay['players'])
+                self.assertIn(1,terrain)
+                reflections = [lambda x,y: (width-1-x,y)]
+                if players > 2:
+                    reflections.append(lambda x,y: (x,height-1-y))
+                if players > 4:
+                    half = width//2
+                    reflections.append(lambda x,y: (half-1-x if x < half else 3*half-1-x,y))
+                for reflect in reflections:
+                    self.assertEqual(sorted(reflect(*f) for f in factories), factories)
+                    for y in range(height):
+                        for x in range(width):
+                            mx, my = reflect(x,y)
+                            self.assertEqual(terrain[y*width+x], terrain[my*width+mx])
+                            self.assertEqual(grid[y][x]['energy'], grid[my][mx]['energy'])
+                seen, pending = set(),[terrain.index(0)]
+                while pending:
+                    pos = pending.pop()
+                    if pos in seen:
+                        continue
+                    seen.add(pos)
+                    x,y = pos%width,pos//width
+                    pending += [ny*width+nx for nx,ny in [((x+1)%width,y),((x-1)%width,y),(x,(y+1)%height),(x,(y-1)%height)] if not terrain[ny*width+nx]]
+                self.assertEqual(len(seen),terrain.count(0))
 
     def test_fog_hides_enemies_banks_and_resources(self):
         _, _, traces = self.game([[(2,2,100)],[(15,12,200)]],rules={'VISION_RADIUS':1})

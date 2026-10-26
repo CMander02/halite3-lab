@@ -77,37 +77,54 @@ def _fit(pairs, players):
     return result
 
 
-def ratings(db):
-    """{version_id: {elo, elo_sd, games, wins, rank_sum}} over public complete matches (cached)."""
-    key = tuple(db.execute("SELECT COUNT(*),COALESCE(MAX(finished_at),0) FROM matches WHERE status='complete' AND public=1").fetchone())
-    with _lock:
-        if _cache["key"] == key:
-            return _cache["value"]
+def fit_matches(rows, pair_extra=None):
+    """Bradley-Terry fit over match rows (seat_json, result_json).
+
+    Returns {version_id: {games, wins, rank_sum, score_sum, elo, elo_sd}}.
+    pair_extra(a, b, score) is called for every ordered seat pair, for callers
+    that want head-to-head counts (score 1 = a ahead of b, 0.5 = tie)."""
     pairs, stats = {}, {}
-    for row in db.execute("SELECT seat_json,result_json FROM matches WHERE status='complete' AND public=1 AND result_json IS NOT NULL"):
+    for row in rows:
         seats = json.loads(row["seat_json"])
         result = json.loads(row["result_json"]).get("stats", {})
-        ranks = [(seat["id"], result.get(str(index), {}).get("rank")) for index, seat in enumerate(seats)]
-        ranks = [(vid, rank) for vid, rank in ranks if rank is not None]
+        ranks = [(seat["id"], result.get(str(index), {}).get("rank"), result.get(str(index), {}).get("score", 0))
+                 for index, seat in enumerate(seats)]
+        ranks = [(vid, rank, score) for vid, rank, score in ranks if rank is not None]
         if len(ranks) < 2:
             continue
         weight = 1.0 / (len(ranks) - 1)
-        for vid, rank in ranks:
-            item = stats.setdefault(vid, {"games": 0, "wins": 0, "rank_sum": 0})
+        for vid, rank, score in ranks:
+            item = stats.setdefault(vid, {"games": 0, "wins": 0, "rank_sum": 0, "score_sum": 0})
             item["games"] += 1
             item["wins"] += rank == 1
             item["rank_sum"] += rank
-        for i, (a, ra) in enumerate(ranks):
-            for b, rb in ranks[i + 1:]:
+            item["score_sum"] += score or 0
+        for i, (a, ra, _) in enumerate(ranks):
+            for b, rb, _ in ranks[i + 1:]:
                 if a == b:
                     continue
                 score = 1.0 if ra < rb else 0.0 if ra > rb else 0.5
+                if pair_extra:
+                    pair_extra(a, b, score)
+                    pair_extra(b, a, 1.0 - score)
                 low, high = (a, b) if a < b else (b, a)
                 cell = pairs.setdefault((low, high), [0.0, 0.0])
                 cell[0] += (score if low == a else 1.0 - score) * weight
                 cell[1] += weight
     fitted = _fit(pairs, list(stats)) if stats else {}
-    value = {vid: {**stats[vid], "elo": fitted[vid][0], "elo_sd": fitted[vid][1]} for vid in stats}
+    return {vid: {**stats[vid], "elo": fitted[vid][0], "elo_sd": fitted[vid][1]} for vid in stats}
+
+
+def ratings(db):
+    """{version_id: {elo, elo_sd, games, wins, rank_sum}} over public complete matches (cached).
+
+    Contest games stay private until the contest publishes its final results,
+    so the global ELO only moves once a contest's submission window is over."""
+    key = tuple(db.execute("SELECT COUNT(*),COALESCE(MAX(finished_at),0) FROM matches WHERE status='complete' AND public=1").fetchone())
+    with _lock:
+        if _cache["key"] == key:
+            return _cache["value"]
+    value = fit_matches(db.execute("SELECT seat_json,result_json FROM matches WHERE status='complete' AND public=1 AND result_json IS NOT NULL"))
     with _lock:
         _cache["key"], _cache["value"] = key, value
     return value

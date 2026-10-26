@@ -31,6 +31,14 @@ SOURCE = b'#include <iostream>\n#include <string>\nint main(){std::string line;s
 PYTHON_SOURCE = b'import sys\nprint("legacy",flush=True)\nfor line in sys.stdin: print("",flush=True)\n'
 
 
+def winner_first(winner):
+    """Ranks for a synthetic game: `winner` first, the other seats in seat order."""
+    def ranks(ids):
+        others = iter(range(2, len(ids) + 1))
+        return [1 if i == winner else next(others) for i in ids]
+    return ranks
+
+
 class BackendTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -482,6 +490,26 @@ class BackendTest(unittest.TestCase):
         self.assertEqual(detail["status"], "complete")
         self.assertFalse(any(detail["result"]["terminated"].values()), detail)
 
+    def test_four_player_match_uses_large_mirrored_map(self):
+        self.account(self.a, "alice")
+        vids = [self.upload(self.a, name=f"ffa-{i}")[1] for i in range(4)]
+        response = self.a.post(
+            "/api/tests", json={"version_ids": vids, "modes": [4], "seeds": [11]}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        match = claim()
+        self.assertEqual(json.loads(match["config_json"])["setups"]["4"]["width"], 48)
+        self.assertTrue(run_match(match))
+        detail = self.a.get("/api/matches/" + match["id"]).json()
+        self.assertEqual(detail["result"]["rules"]["PILEUP_WRECK_SIZE"], 3)
+        self.assertEqual(detail["result"]["turns"], 300)
+        replay = self.a.get("/api/matches/" + match["id"] + "/replay").json()
+        self.assertEqual(
+            (replay["production_map"]["width"], replay["production_map"]["height"]),
+            (48, 48),
+        )
+        self.assertTrue(replay["GAME_CONSTANTS"]["MIRROR_REEFS"])
+
 
     def test_single_admin_and_user_management(self):
         admin = self.account(self.a, S.ADMIN_USERNAME)
@@ -513,6 +541,10 @@ class BackendTest(unittest.TestCase):
         self.account(self.a, "alice")
         response = self.a.post("/api/bots", json={"name": "traced"})
         bot = response.json()["id"]
+        # Optional by default; HALITE_REQUIRE_TRACE=1 makes it mandatory.
+        self.assertEqual(self.a.post(f"/api/bots/{bot}/versions", data={"version": "0"}, files={"file": ("bot.cpp", SOURCE)}).status_code, 201)
+        S.REQUIRE_TRACE = True
+        self.addCleanup(setattr, S, "REQUIRE_TRACE", False)
         missing = self.a.post(f"/api/bots/{bot}/versions", data={"version": "1"}, files={"file": ("bot.cpp", SOURCE)})
         self.assertEqual(missing.status_code, 400)
         _, vid = self.upload(self.a, bot=bot, version="2",
@@ -592,6 +624,259 @@ class BackendTest(unittest.TestCase):
         self.assertEqual({v["version"]: v["archived"] for v in versions}, {"1": 1, "2": 0})
         self.assertEqual(self.a.patch(f"/api/bots/{bot}", json={"default_version_id": first}).status_code, 400)
 
+    def contest_payload(self, **changes):
+        payload = {
+            "slug": "cup-1", "title": "第一届群赛", "summary": "测试", "description": "规则说明",
+            "visible_at": now() - 100, "open_at": now() - 50, "close_at": now() + 3600, "published": True,
+            "modes": [2, 4], "public_maps": {"2": [11, 29], "4": [7]}, "hidden_maps": {"2": [101], "4": [202]},
+            "targets": ["builtin-baseline-v1", "builtin-raider-v1"], "base_version_id": "builtin-baseline-v1",
+            "downloads": ["builtin-raider-v1"], "max_submissions": 3, "final_rounds": 2, "languages": ["cpp", "python"],
+        }
+        payload.update(changes)
+        return payload
+
+    def finish_games(self, where, params, rank_of):
+        """Complete queued games synthetically: rank_of(seat_ids) -> ranks."""
+        with connect() as db:
+            rows = db.execute(f"SELECT id,seat_json FROM matches WHERE status='queued' AND {where}", params).fetchall()
+            for row in rows:
+                ids = [seat["id"] for seat in json.loads(row["seat_json"])]
+                ranks = rank_of(ids)
+                stats = {str(i): {"rank": r, "score": 1000 * (len(ids) - r)} for i, r in enumerate(ranks)}
+                db.execute("UPDATE matches SET status='complete',result_json=?,finished_at=? WHERE id=?",
+                           (json.dumps({"stats": stats}), now(), row["id"]))
+        return len(rows)
+
+    def test_contest_lifecycle_bench_final_and_global_elo(self):
+        from backend import contests
+
+        self.account(self.a, S.ADMIN_USERNAME)
+        self.account(self.b, "bob")
+        self.assertEqual(self.b.post("/api/admin/contests", json=self.contest_payload()).status_code, 403)
+        bad = self.a.post("/api/admin/contests", json=self.contest_payload(hidden_maps={"2": [11], "4": []}))
+        self.assertEqual(bad.status_code, 400)
+        response = self.a.post("/api/admin/contests", json=self.contest_payload())
+        self.assertEqual(response.status_code, 201, response.text)
+        cid = response.json()["id"]
+        # Hidden maps stay hidden from players until the results are published.
+        detail = self.b.get("/api/contests/cup-1").json()
+        self.assertEqual(detail["status"], "open")
+        self.assertIsNone(detail["maps"]["2"]["hidden"])
+        self.assertEqual(detail["maps"]["2"]["hidden_count"], 1)
+        self.assertEqual(self.a.get("/api/contests/cup-1").json()["maps"]["2"]["hidden"], [101])
+        self.assertEqual(detail["maps"]["4"]["width"], 48)
+        self.assertEqual([d["version_id"] for d in detail["downloads"]], ["builtin-raider-v1"])
+        self.assertEqual(self.b.get("/api/contests/cup-1/downloads/builtin-raider-v1").status_code, 200)
+        self.assertEqual(self.b.get("/api/contests/cup-1/downloads/builtin-baseline-v1").status_code, 200)
+        # 1v1: 2 targets x 2 maps x 2 seats; 4p: one group x 1 map x 4 seats.
+        self.assertEqual(detail["bench_games"], 8 + 4)
+
+        bot, v1 = self.upload(self.b, name="tide")
+        _, v2 = self.upload(self.b, version="2.0", bot=bot)
+        first = self.b.post("/api/contests/cup-1/entries", json={"version_id": v1})
+        self.assertEqual(first.status_code, 201, first.text)
+        self.assertEqual(first.json()["games"], 12)
+        self.assertEqual(self.b.post("/api/contests/cup-1/entries", json={"version_id": v1}).status_code, 409)
+        self.assertEqual(self.a.post("/api/contests/cup-1/entries", json={"version_id": v1}).status_code, 404)
+        with connect() as db:
+            seeds = {r[0] for r in db.execute("SELECT seed FROM matches WHERE job_id=?", (first.json()["job_id"],))}
+            self.assertEqual(seeds, {11, 29, 7})
+        # The newer submission supersedes the queued bench games of the first one.
+        second = self.b.post("/api/contests/cup-1/entries", json={"version_id": v2})
+        self.assertEqual(second.status_code, 201, second.text)
+        with connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM matches WHERE job_id=? AND status='cancelled'", (first.json()["job_id"],)).fetchone()[0], 12)
+        self.finish_games("job_id=?", (second.json()["job_id"],), winner_first(v2))
+        standings = self.b.get("/api/contests/cup-1/standings").json()["standings"]
+        mine = next(r for r in standings["overall"] if r["version_id"] == v2)
+        self.assertEqual((mine["rank"], mine["wins"], mine["games"]), (1, 12, 12))
+        self.assertTrue(mine["current"])
+        self.assertEqual(mine["versus"]["builtin-raider-v1"]["score"], mine["versus"]["builtin-raider-v1"]["games"])
+        self.assertIsNone(next(r for r in standings["overall"] if r["version_id"] == "builtin-raider-v1")["rank"])
+        self.assertEqual(len(standings["2"]), 3)
+        # Contest games are private until the end: no public match, no global ELO.
+        self.assertEqual(self.a.get("/api/leaderboard/elo").json()["entries"], [])
+        self.assertEqual(self.b.get(f"/api/matches?scope=mine").json()["total"], 24)
+        self.assertEqual(self.a.get("/api/matches").json()["total"], 0)
+        # Picking the first submission makes it the finalist.
+        entries = self.b.get("/api/contests/cup-1/entries").json()["entries"]
+        self.assertEqual([e["seq"] for e in entries], [2, 1])
+        self.assertTrue(entries[0]["current"])
+        self.assertEqual(self.b.put("/api/contests/cup-1/pick", json={"entry_id": entries[1]["id"]}).status_code, 200)
+        self.assertTrue(self.b.get("/api/contests/cup-1/entries").json()["entries"][1]["current"])
+        self.b.put("/api/contests/cup-1/pick", json={"entry_id": entries[0]["id"]})
+        # Bench fields freeze once submissions exist.
+        frozen = self.a.put(f"/api/admin/contests/{cid}", json=self.contest_payload(public_maps={"2": [11], "4": [7]}))
+        self.assertEqual(frozen.status_code, 409)
+        self.assertEqual(self.a.put(f"/api/admin/contests/{cid}", json=self.contest_payload(title="改名")).status_code, 200)
+        self.assertEqual(self.b.get("/api/contests/cup-1/standings?stage=final").status_code, 403)
+
+        # Window closes: the runner tick queues the final with the hidden maps.
+        with connect() as db:
+            db.execute("UPDATE contests SET close_at=? WHERE id=?", (now() - 1, cid))
+        self.assertEqual(self.b.post("/api/contests/cup-1/entries", json={"version_id": v1}).status_code, 409)
+        contests.tick()
+        with connect() as db:
+            job = db.execute("SELECT final_job_id FROM contests WHERE id=?", (cid,)).fetchone()[0]
+            games = db.execute("SELECT mode,seed,seat_json,public FROM matches WHERE job_id=?", (job,)).fetchall()
+        self.assertTrue(job)
+        # 1v1: finalist vs 2 targets x 3 maps x 2 seats; 4p: 2 rounds x 2 maps x 1 group.
+        self.assertEqual(sum(g["mode"] == 2 for g in games), 12)
+        self.assertEqual(sum(g["mode"] == 4 for g in games), 4)
+        self.assertIn(101, {g["seed"] for g in games})
+        self.assertTrue(all(g["public"] == 0 for g in games))
+        self.assertTrue(all([seat["id"] for seat in json.loads(g["seat_json"])].count(v2) == 1 for g in games))
+        self.assertEqual(self.b.get("/api/contests/cup-1").json()["status"], "closed")
+        # A restart discards the first schedule: its finished games no longer count.
+        self.finish_games("job_id=? AND mode=2", (job,), lambda ids: [2 if i == v2 else 1 for i in ids])
+        restarted = self.a.post(f"/api/admin/contests/{cid}/final")
+        self.assertEqual(restarted.status_code, 200, restarted.text)
+        job = restarted.json()["job_id"]
+        self.finish_games("job_id=?", (job,), lambda ids: [ids.index(i) + 1 for i in ids])
+        contests.tick()
+        detail = self.b.get("/api/contests/cup-1").json()
+        self.assertEqual(detail["status"], "finished")
+        self.assertEqual(detail["maps"]["2"]["hidden"], [101])
+        final = self.b.get("/api/contests/cup-1/standings?stage=final").json()
+        self.assertTrue(final["final"])
+        row = next(r for r in final["standings"]["overall"] if r["version_id"] == v2)
+        self.assertEqual(row["rank"], 1)
+        self.assertEqual(row["hidden"]["games"], 4 + 2)  # 1v1 seed 101 x 2 targets x 2 seats; 4p seed 202 x 2 rounds
+        # Published: games are public and now count in the global ELO.
+        self.assertEqual(self.a.get("/api/matches").json()["total"], 24 + 16 + 16)  # bench + final + discarded first final
+        ids = [e["version_id"] for e in self.a.get("/api/leaderboard/elo").json()["entries"]]
+        self.assertIn(v2, ids)
+        self.assertNotIn(v1, ids)  # cancelled bench, never played
+
+        # Bot page: version history with global ELO and contest results, visible to others.
+        profile = self.a.get(f"/api/bots/{bot}/profile").json()
+        self.assertEqual([v["version"] for v in profile["versions"]], ["1.0", "2.0"])
+        latest = profile["versions"][1]
+        self.assertIsNotNone(latest["elo"])
+        self.assertEqual(latest["contests"][0]["final"]["rank"], 1)
+        self.assertEqual(latest["contests"][0]["status"], "finished")
+        self.assertEqual(self.a.put(f"/api/admin/contests/{cid}", json=self.contest_payload()).status_code, 409)
+
+    def test_contest_visibility_language_and_quota(self):
+        self.account(self.a, S.ADMIN_USERNAME)
+        self.account(self.b, "bob")
+        payload = self.contest_payload(slug="later", visible_at=now() + 600, open_at=now() + 700, close_at=now() + 900)
+        self.assertEqual(self.a.post("/api/admin/contests", json=payload).status_code, 201)
+        draft = self.contest_payload(slug="draft", published=False)
+        self.assertEqual(self.a.post("/api/admin/contests", json=draft).status_code, 201)
+        self.assertEqual([c["number"] for c in self.b.get("/api/contests").json()["contests"]], [0])
+        self.assertEqual(self.b.get("/api/contests/later").status_code, 404)
+        self.assertEqual([c["number"] for c in self.a.get("/api/contests").json()["contests"]], [2, 1, 0])
+        cpp = self.contest_payload(slug="cpp", languages=["cpp"], max_submissions=1, modes=[2])
+        self.assertEqual(self.a.post("/api/admin/contests", json=cpp).status_code, 201)
+        # Uploads are C++ only; a contest also needs the single file to be named bot.cpp.
+        bot, misnamed = self.upload(self.b, filename="main.cpp")
+        response = self.b.post("/api/contests/cpp/entries", json={"version_id": misnamed})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("bot.cpp", response.json()["detail"])
+        source = b'#include <iostream>\nint main(){std::string s; std::getline(std::cin,s); std::cout<<"x"<<std::endl; while(std::getline(std::cin,s)) std::cout<<std::endl;}\n'
+        _, a = self.upload(self.b, version="c1", bot=bot, source=source, filename="bot.cpp")
+        _, b = self.upload(self.b, version="c2", bot=bot, source=source + b"\n", filename="bot.cpp")
+        self.assertEqual(self.b.post("/api/contests/cpp/entries", json={"version_id": a}).status_code, 201)
+        self.assertEqual(self.b.post("/api/contests/cpp/entries", json={"version_id": b}).status_code, 409)
+        # Targets must be platform baselines or the admin's own versions.
+        self.assertEqual(self.a.post("/api/admin/contests", json=self.contest_payload(slug="xx", targets=[a])).status_code, 400)
+        # Drafts without submissions can be deleted.
+        contest = next(c for c in self.a.get("/api/contests").json()["contests"] if c["slug"] == "draft")
+        self.assertEqual(self.a.delete(f"/api/admin/contests/{contest['id']}").status_code, 200)
+
+    def test_written_game_rules(self):
+        from backend import contest_docs as D
+        expected = {2: [(8, 16), (23, 16)], 4: [(14, 14), (33, 14), (14, 33), (33, 33)],
+                    8: [(4, 8), (11, 8), (4, 23), (11, 23), (27, 8), (20, 8), (27, 23), (20, 23)]}
+        for mode, spots in expected.items():
+            setup = S.MODE_SETUPS[mode]
+            self.assertEqual(D.factories(mode, setup["width"], setup["height"]), spots)
+            if S.ENGINE.is_file():
+                rendered = D.render_map(mode, 11, setup)
+                self.assertEqual([tuple(f) for f in rendered["factories"]], spots)
+        self.account(self.a, "alice")
+        text = self.a.get("/api/contests/test-0").json()["rules_text"]
+        for part in ["## 每回合的结算顺序", "P0 (8,16)、P1 (23,16)", "三艘船的例子：", "## 迷雾与观测", "## 违规与判负", "## 结束与名次"]:
+            self.assertIn(part, text)
+        self.assertNotIn("多船连撞", text)
+        # With a 4-player mode the pileup rule is scoped to it and the three-ship example to the others.
+        config = {"modes": [2, 4], "public_maps": {"2": [11], "4": [7]}, "hidden_maps": {}, "targets": [], "languages": ["cpp"],
+                  "max_submissions": 5, "setups": {str(m): S.MODE_SETUPS[m] for m in (2, 4)}}
+        text = D.rules_markdown({"number": 1, "title": "t", "visible_at": None, "open_at": 0, "close_at": 0, "rules": ""}, config)
+        self.assertIn("**多船连撞**（仅 4 人混战）", text)
+        self.assertIn("三艘船的例子（未开启多船连撞时）", text)
+
+    def test_practice_contest_zero_absorbs_benchmark_runs(self):
+        self.account(self.a, "alice")
+        _, legacy = self.upload(self.a, name="legacy")
+        job = self.a.post(f"/api/versions/{legacy}/rank").json()["id"]
+        zero = self.a.get("/api/contests/test-0").json()
+        self.assertEqual((zero["number"], zero["status"], zero["practice"]), (0, "open", True))
+        entries = self.a.get("/api/contests/test-0/entries").json()["entries"]
+        self.assertEqual([(e["version_id"], e["job_id"], e["seq"]) for e in entries], [(legacy, job, 1)])
+        self.finish_games("job_id=?", (job,), winner_first(legacy))
+        row = next(r for r in self.a.get("/api/contests/test-0/standings").json()["standings"]["overall"] if r["version_id"] == legacy)
+        self.assertEqual((row["games"], row["rank"]), (12, 1))
+        # Submitting bot.cpp to #0 is the same public 12-game benchmark.
+        cpp = b'#include <iostream>\nint main(){}\n'
+        response = self.a.post("/api/contests/test-0/submit", data={"bot": "zero-bot"}, files={"file": ("bot.cpp", cpp)})
+        self.assertEqual(response.status_code, 201, response.text)
+        with connect() as db:
+            kind, public = db.execute("SELECT j.kind,MIN(m.public) FROM jobs j JOIN matches m ON m.job_id=j.id WHERE j.id=?", (response.json()["job_id"],)).fetchone()
+        self.assertEqual((kind, public, response.json()["games"], response.json()["seq"]), ("ranked", 1, 12, 2))
+        # In #0 every bot's latest submission is ranked, not one per user.
+        self.assertEqual([e["current"] for e in self.a.get("/api/contests/test-0/entries").json()["entries"]], [True, True])
+
+    def test_contest_upload_bot_cpp_kit_and_written_rules(self):
+        self.account(self.a, S.ADMIN_USERNAME)
+        self.account(self.b, "bob")
+        payload = self.contest_payload(slug="cup-cpp", languages=["cpp"], rules="禁止读取地图种子。", prompt="")
+        cid = self.a.post("/api/admin/contests", json=payload).json()["id"]
+        cpp = b'#include <iostream>\nint main(){}\n'
+        wrong = self.b.post("/api/contests/cup-cpp/submit", files={"file": ("main.cpp", cpp)})
+        self.assertEqual(wrong.status_code, 400)
+        self.assertIn("bot.cpp", wrong.json()["detail"])
+        first = self.b.post("/api/contests/cup-cpp/submit", data={"note": "v1"}, files={"file": ("bot.cpp", cpp)})
+        self.assertEqual(first.status_code, 201, first.text)
+        self.assertEqual((first.json()["bot"], first.json()["version"], first.json()["seq"]), ("cup-cpp", "1", 1))
+        # Iterating on the same bot, with an agent trace this time.
+        second = self.b.post("/api/contests/cup-cpp/submit", data={"bot": "cup-cpp"}, files={"file": ("bot.cpp", cpp + b"//2\n"), "trace": ("s.jsonl", TRACE)})
+        self.assertEqual(second.status_code, 201, second.text)
+        self.assertEqual((second.json()["bot_id"], second.json()["version"]), (first.json()["bot_id"], "2"))
+        bots = [b for b in self.b.get("/api/bots").json()["bots"] if b["owned"]]
+        self.assertEqual([len(b["versions"]) for b in bots], [2])
+        # An uploaded version that is not named bot.cpp cannot be entered.
+        _, other = self.upload(self.b, name="other", source=cpp, filename="main.cpp")
+        response = self.b.post("/api/contests/cup-cpp/entries", json={"version_id": other})
+        self.assertEqual(response.status_code, 400)
+        # Written rules come from the frozen configuration plus the admin's extra rules.
+        detail = self.b.get("/api/contests/cup-cpp").json()
+        self.assertIn("bot.cpp", detail["rules_text"])
+        self.assertIn("48×48", detail["rules_text"])
+        self.assertIn("禁止读取地图种子。", detail["rules_text"])
+        self.assertIn("contest-submit cup-cpp", detail["prompt_text"])
+        self.assertNotIn("prompt", detail)
+        self.assertEqual(self.a.get("/api/contests/cup-cpp").json()["rules"], "禁止读取地图种子。")
+        prompt = self.b.get("/api/contests/cup-cpp/prompt.md")
+        self.assertEqual(prompt.status_code, 200)
+        self.assertIn("比赛规则", prompt.text)
+        # The problem kit.
+        response = self.b.get("/api/contests/cup-cpp/kit.zip")
+        self.assertEqual(response.status_code, 200)
+        names = set(zipfile.ZipFile(io.BytesIO(response.content)).namelist())
+        for name in ["README.md", "PROMPT.md", "RULES.md", "PROTOCOL.md", "starter/bot.cpp", "tools/client.py",
+                     "maps/manifest.json", "maps/rules-2.json", "maps/rules-4.json", "bots/baseline-v1.0/bot.py", "bots/raider-v1.1/common.py"]:
+            self.assertIn(f"cup-cpp/{name}", names)
+        manifest = json.loads(zipfile.ZipFile(io.BytesIO(response.content)).read("cup-cpp/maps/manifest.json"))
+        self.assertEqual([(m["mode"], m["seed"]) for m in manifest["public_maps"]], [(2, 11), (2, 29), (4, 7)])
+        self.assertEqual(manifest["hidden_maps"], {"2": 1, "4": 1})
+        self.assertNotIn("101", json.dumps(manifest))
+        if S.ENGINE.is_file():
+            rendered = json.loads(zipfile.ZipFile(io.BytesIO(response.content)).read("cup-cpp/maps/4-7.json"))
+            self.assertEqual((rendered["width"], len(rendered["halite"]), len(rendered["factories"])), (48, 48 * 48, 4))
+            self.assertTrue(any(rendered["reef"]))
+
 
 class ProfileAndAnalyticsTest(unittest.TestCase):
     def setUp(self):
@@ -661,6 +946,7 @@ class ProfileAndAnalyticsTest(unittest.TestCase):
         self.assertEqual(p1["lost"], 700)
         self.assertEqual(p0["delivered"], 900)
         self.assertGreater(p0["territory"], p1["territory"])
+
 
 
 if __name__ == "__main__":
