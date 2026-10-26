@@ -323,7 +323,10 @@ export default function ReplayPage({ id }: { id: string }) {
           <dt>视野半径</dt>
           <dd className="m-0 text-ink">{replay.data.GAME_CONSTANTS.VISION_RADIUS}</dd>
           <dt>碰撞</dt>
-          <dd className="m-0 text-ink">轻船抢矿 · 同重沉没</dd>
+          <dd className="m-0 text-ink">
+            轻船抢矿 · 同重沉没
+            {replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE ? ` · ${replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE} 船以上全沉` : ""}
+          </dd>
           <dt>来源</dt>
           <dd className="m-0 text-ink">{m.kind === "ranked" ? "固定基准评测" : m.kind === "demo" ? "公开示例" : "私人测试"}</dd>
         </dl>

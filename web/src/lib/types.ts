@@ -195,6 +195,7 @@ export interface Replay {
     VISION_RADIUS: number;
     FOG_ENABLED: boolean;
     LIGHT_SHIP_COLLISIONS: boolean;
+    PILEUP_WRECK_SIZE?: number;
     MAX_ENERGY: number;
   };
   map_generator_seed: number;

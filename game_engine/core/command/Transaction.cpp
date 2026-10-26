@@ -47,9 +47,11 @@ void dump_energy(Store &store, Entity &entity, const Location &location, Cell &c
     dump_energy(store, location, cell, energy);
 }
 
-// Returns the unique lightest ship, or None when the lightest weight ties.
+// Returns the unique lightest ship, or None when the lightest weight ties or the pileup is large enough to wreck all.
 Entity::id_type collision_survivor(const Store &store, const std::vector<Entity::id_type> &ships) {
     if (!Constants::get().LIGHT_SHIP_COLLISIONS) return Entity::None;
+    const auto pileup = Constants::get().PILEUP_WRECK_SIZE;
+    if (pileup > 0 && ships.size() >= pileup) return Entity::None;
     auto survivor = ships.front();
     auto minimum = store.get_entity(survivor).energy;
     bool tied = false;

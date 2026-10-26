@@ -30,15 +30,31 @@ void Generator::generate(Map &map, const MapParameters &parameters) {
     while (parameters.num_players % rows) --rows;
     const auto cols = parameters.num_players / rows;
     const int tw = map.width / cols, th = map.height / rows;
+    // Only the fractal generator mirrors its tiles; the others translate them.
+    const bool mirror = Constants::get().MIRROR_REEFS && parameters.type == MapType::Fractal;
     std::mt19937 terrain_rng(parameters.seed ^ 0x5eed1234U);
     for (int y = 0; y < th; ++y) for (int x = 0; x < tw; ++x) {
         if (terrain_rng() % 100 >= Constants::get().REEF_PERCENT) continue;
         std::vector<Location> group;
+        if (mirror) {
+            // Same reflection order as SymmetricalTile::tile_map: across y, then x, repeatedly.
+            group.emplace_back(x, y);
+            int width = tw, height = th;
+            for (unsigned long tiles = 1; tiles < parameters.num_players;) {
+                for (size_t i = 0, n = group.size(); i < n; ++i) group.emplace_back(2 * width - 1 - group[i].x, group[i].y);
+                width *= 2; tiles *= 2;
+                if (tiles == parameters.num_players) break;
+                for (size_t i = 0, n = group.size(); i < n; ++i) group.emplace_back(group[i].x, 2 * height - 1 - group[i].y);
+                height *= 2; tiles *= 2;
+            }
+        } else {
+            for (unsigned long ry = 0; ry < rows; ++ry) for (unsigned long cx = 0; cx < cols; ++cx) {
+                group.emplace_back(x + static_cast<int>(cx) * tw, y + static_cast<int>(ry) * th);
+            }
+        }
         bool protected_cell = false;
-        for (unsigned long ry = 0; ry < rows; ++ry) for (unsigned long cx = 0; cx < cols; ++cx) {
-            Location loc{x + static_cast<int>(cx) * tw, y + static_cast<int>(ry) * th};
+        for (const auto &loc : group) {
             for (const auto &factory : map.factories) if (map.distance(factory, loc) <= 2) protected_cell = true;
-            group.push_back(loc);
         }
         if (protected_cell) continue;
         for (const auto &loc : group) map.at(loc).reef = true;

@@ -37,7 +37,7 @@
 
 ## 规则
 
-默认实验规则见 [lab/config/rules.json](lab/config/rules.json)，详细顺序与协议见 [lab/RULES.md](lab/RULES.md)。
+默认实验规则见 [lab/config/rules.json](lab/config/rules.json)，4 人混战场（48×48、镜像礁石、三船以上连撞全沉）见 [lab/config/rules-ffa4.json](lab/config/rules-ffa4.json)，详细顺序与协议见 [lab/RULES.md](lab/RULES.md)。
 
 | 配置 | 当前值 | 行为 |
 |---|---:|---|

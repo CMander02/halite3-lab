@@ -325,6 +325,26 @@ class BackendTest(unittest.TestCase):
             self.a.get("/api/matches/" + match["id"] + "/logs").json()["players"]
         )
 
+    def test_four_player_match_uses_large_mirrored_map(self):
+        self.account(self.a, "alice")
+        vids = [self.upload(self.a, name=f"ffa-{i}")[1] for i in range(4)]
+        response = self.a.post(
+            "/api/tests", json={"version_ids": vids, "modes": [4], "seeds": [11]}
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        match = claim()
+        self.assertEqual(json.loads(match["config_json"])["setups"]["4"]["width"], 48)
+        self.assertTrue(run_match(match))
+        detail = self.a.get("/api/matches/" + match["id"]).json()
+        self.assertEqual(detail["result"]["rules"]["PILEUP_WRECK_SIZE"], 3)
+        self.assertEqual(detail["result"]["turns"], 300)
+        replay = self.a.get("/api/matches/" + match["id"] + "/replay").json()
+        self.assertEqual(
+            (replay["production_map"]["width"], replay["production_map"]["height"]),
+            (48, 48),
+        )
+        self.assertTrue(replay["GAME_CONSTANTS"]["MIRROR_REEFS"])
+
 
     def test_single_admin_and_user_management(self):
         admin = self.account(self.a, S.ADMIN_USERNAME)
