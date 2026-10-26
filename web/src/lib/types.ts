@@ -27,6 +27,7 @@ export interface PlayerStats {
   delivered: number;
   mined: number;
   territory: number;
+  vision: number | null;
   ships_built: number;
   dropoffs: number;
 }
@@ -52,6 +53,7 @@ export interface BoardEntry {
   delivered: number;
   mined: number;
   territory: number;
+  vision: number | null;
   ships_built: number;
 }
 export interface Summary {

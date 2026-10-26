@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import type { Attribution, Catalog, CatalogEntry, CatalogKind } from "@/lib/types";
+import type { Attribution, Catalog, CatalogEntry, CatalogKind, EloEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // The catalog changes rarely: fetch it once per page load and share it.
@@ -58,7 +58,7 @@ export function SetupLine({ attribution, catalog, compact = false }: { attributi
   const body = (
     <span className={cn("flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5", compact && "flex-nowrap")}>
       <CatalogChip kind="model" id={parts.model.value} catalog={catalog} />
-      <span className="border border-line px-1 text-[12px] leading-[16px] text-ink-2">{entry(catalog, "effort", parts.effort.value).name}</span>
+      <span className="border border-line px-1 text-[13px] leading-[18px] text-ink-2">{entry(catalog, "effort", parts.effort.value).name}</span>
       {!compact && <CatalogChip kind="harness" id={parts.harness.value} catalog={catalog} muted />}
       {parts.mismatch?.length ? <span className="text-warn" title="声明与轨迹检测不一致">⚠</span> : null}
     </span>
@@ -74,7 +74,7 @@ export function SetupLine({ attribution, catalog, compact = false }: { attributi
           const p = parts[kind];
           return (
             <div key={kind}>
-              {{ model: "模型", effort: "推理", harness: "平台" }[kind]}：{entry(catalog, kind, p.value).name}（{SOURCE[p.source]}，{signed(p.offset)}）
+              {KIND_LABEL[kind]}：{entry(catalog, kind, p.value).name}（{SOURCE[p.source]}，{signed(p.offset)}）
               {p.declared !== p.detected && p.detected !== "unknown" && (
                 <span className="opacity-70">
                   {" "}
@@ -87,6 +87,67 @@ export function SetupLine({ attribution, catalog, compact = false }: { attributi
         <div className="mt-1">合计 ELO 修正 {signed(parts.correction)}</div>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+export const KIND_LABEL: Record<CatalogKind, string> = { model: "模型", effort: "推理", harness: "平台" };
+export const SETUP_KINDS: CatalogKind[] = ["model", "effort", "harness"];
+
+type SetupAttribution = EloEntry["attribution"];
+
+/** One attribution dimension as its own table cell: name, then its own ELO correction and source. */
+function SetupCell({ kind, attribution, catalog }: { kind: CatalogKind; attribution: NonNullable<SetupAttribution>; catalog: Catalog | null }) {
+  const p = attribution[kind] as { value: string; offset: number; source: string; declared?: string; detected?: string };
+  const e = entry(catalog, kind, p.value);
+  const mismatch = attribution.mismatch?.includes(kind);
+  const body = (
+    <span className="flex min-w-0 flex-col">
+      {kind === "effort" ? (
+        <span className="w-fit border border-line px-1.5 text-[14px] leading-[22px]">{e.name}</span>
+      ) : (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Icon name={e.icon} />
+          <span className="truncate">{e.name}</span>
+        </span>
+      )}
+      <span className="num text-[13px] leading-[18px] text-ink-3">
+        {signed(p.offset)}
+        {SOURCE[p.source] ? ` · ${SOURCE[p.source]}` : ""}
+        {mismatch && <span className="text-warn"> ⚠</span>}
+      </span>
+    </span>
+  );
+  if (!p.declared || !mismatch) return body;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="min-w-0 cursor-help">{body}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-80 bg-ink text-paper">
+        声明 {entry(catalog, kind, p.declared).name} / 检测 {entry(catalog, kind, p.detected).name}，按修正更大的一方计算
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Model, effort and harness as three separate <td>s, so each dimension can be read, filtered and compared on its own. */
+export function SetupCells({ attribution, catalog, empty = "平台基准" }: { attribution: SetupAttribution; catalog: Catalog | null; empty?: string }) {
+  if (!attribution)
+    return (
+      <>
+        <td className="text-ink-3">{empty}</td>
+        <td className="text-ink-3">—</td>
+        <td className="text-ink-3">—</td>
+      </>
+    );
+  return (
+    <>
+      {SETUP_KINDS.map((kind) => (
+        <td key={kind} className={kind === "effort" ? "whitespace-nowrap" : "max-w-[200px]"}>
+          <SetupCell kind={kind} attribution={attribution} catalog={catalog} />
+        </td>
+      ))}
+    </>
   );
 }
 

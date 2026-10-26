@@ -1,11 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource/fusion-pixel-12px-monospaced-sc/400.css";
+@import "@fontsource/noto-sans-sc/400.css";
+@import "@fontsource/noto-sans-sc/700.css";
 
 /*
  * Halite 3 Arena — "Pixel Odyssey, daylight edition".
- * Moonshot pixel DNA (1-bit dithering, pixel mono type, zero radius, no shadow,
- * notched terminal buttons) inverted onto cream paper with blue pixels.
+ * Moonshot pixel DNA (1-bit dithering, zero radius, no shadow, notched terminal
+ * buttons) inverted onto cream paper with blue pixels. Reading text is set in
+ * Source Han Sans / Noto Sans SC at 16px; the pixel face is reserved for
+ * decoration (logo, page titles, eyebrows, ranks, big numbers) via `font-pixel`.
  */
 
 @custom-variant dark (&:is(.dark *));
@@ -58,8 +62,8 @@
 
 @theme inline {
   --font-pixel: "Fusion Pixel 12px Monospaced SC", "SimSun", ui-monospace, monospace;
-  --font-sans: var(--font-pixel);
-  --font-mono: var(--font-pixel);
+  --font-sans: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, "Source Han Sans SC", "Noto Sans SC", monospace;
   --color-paper: var(--paper);
   --color-paper-2: var(--paper-2);
   --color-ink: var(--ink);
@@ -102,12 +106,12 @@
   --radius-md: 0px;
   --radius-lg: 0px;
   --radius-xl: 0px;
-  --text-xs: 12px;
-  --text-xs--line-height: 18px;
-  --text-sm: 12px;
-  --text-sm--line-height: 20px;
-  --text-base: 12px;
-  --text-base--line-height: 20px;
+  --text-xs: 13px;
+  --text-xs--line-height: 20px;
+  --text-sm: 14px;
+  --text-sm--line-height: 22px;
+  --text-base: 16px;
+  --text-base--line-height: 26px;
   --text-lg: 24px;
   --text-lg--line-height: 28px;
 }
@@ -125,13 +129,11 @@
     min-width: 320px;
     background: var(--paper);
     color: var(--ink);
-    font-family: var(--font-pixel);
-    font-size: 12px;
-    line-height: 20px;
-    -webkit-font-smoothing: none;
-    -moz-osx-font-smoothing: unset;
-    font-smooth: never;
-    text-rendering: optimizeSpeed;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 26px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   a {
     color: inherit;
@@ -212,6 +214,8 @@
   border-top: 1px solid var(--line);
 }
 .eyebrow {
+  font-family: var(--font-pixel);
+  -webkit-font-smoothing: none;
   font-size: 12px;
   color: var(--ink-2);
   letter-spacing: 0;
@@ -226,6 +230,23 @@
 }
 .num {
   font-variant-numeric: tabular-nums;
+}
+/* the pixel face only looks right unsmoothed */
+.font-pixel {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+  font-smooth: never;
+  letter-spacing: 0;
+}
+.all-sans .eyebrow {
+  font-size: 14px;
+}
+/* pages that ask for plain reading type everywhere (the home page); unlayered so it beats the utility */
+.all-sans .font-pixel,
+.all-sans .eyebrow {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 .blink {
   animation: blink 1.2s steps(2, jump-none) infinite;
@@ -322,11 +343,13 @@ input[type="range"].scrubber::-moz-range-thumb {
 .ptable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 15px;
+  line-height: 24px;
 }
 .ptable th {
   text-align: left;
   font-weight: 400;
+  font-size: 14px;
   color: var(--ink-2);
   padding: 8px 12px;
   border-bottom: 1px solid var(--ink);

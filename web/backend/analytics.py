@@ -1,4 +1,4 @@
-"""Per-player combat, hauling and territory statistics derived from a replay.
+"""Per-player combat, hauling, territory and vision statistics derived from a replay.
 
 Replay semantics (verified on lab replays): frame t lists ships at the START of
 turn t and the events that happened during turn t; frame t+1 therefore holds
@@ -12,7 +12,8 @@ from . import settings as S
 
 log = logging.getLogger('halite3.analytics')
 TERRITORY_SAMPLES = 40
-COLUMNS = ['kills', 'deaths', 'assists', 'robbed', 'lost', 'delivered', 'mined', 'territory', 'ships_built', 'dropoffs']
+COLUMNS = ['kills', 'deaths', 'assists', 'robbed', 'lost', 'delivered', 'mined', 'territory', 'vision', 'ships_built', 'dropoffs']
+DEFAULT_VISION_RADIUS = 4
 
 
 def _territory(width, height, sources, players):
@@ -44,6 +45,19 @@ def _territory(width, height, sources, players):
         if value >= 0:
             counts[value] += 1
     return [count / (width * height) for count in counts]
+
+
+def _vision(width, height, sources, players, radius):
+    """Share of cells within torus Manhattan distance `radius` of each player's ships/structures."""
+    seen = [set() for _ in range(players)]
+    for x, y, pid in sources:
+        cells = seen[pid]
+        for dx in range(-radius, radius + 1):
+            span = radius - abs(dx)
+            column = (x + dx) % width
+            for dy in range(-span, span + 1):
+                cells.add(((y + dy) % height) * width + column)
+    return [min(len(cells), width * height) / (width * height) for cells in seen]
 
 
 def analyze(replay):
@@ -84,10 +98,13 @@ def analyze(replay):
             stats[pid]['mined'] = int(item.get('total_mined', 0))
             stats[pid]['ships_built'] = int(item.get('ships_spawned', 0))
             stats[pid]['dropoffs'] = int(item.get('number_dropoffs', 0))
-    # Territory: average controlled-cell share over evenly spaced turns.
+    # Territory and vision: average cell shares over evenly spaced turns. Vision uses the
+    # fog-of-war radius (what the player's own units light up), even when fog was off.
+    radius = int(replay.get('GAME_CONSTANTS', {}).get('VISION_RADIUS', DEFAULT_VISION_RADIUS))
     structures = [(p['factory_location']['x'], p['factory_location']['y'], p['player_id']) for p in replay['players']]
     step = max(1, len(frames) // TERRITORY_SAMPLES)
     shares = [0.0] * players
+    seen = [0.0] * players
     samples = 0
     for t in range(1, len(frames), step):
         frame = frames[t]
@@ -97,9 +114,12 @@ def analyze(replay):
         sources = list(structures) + [(ship['x'], ship['y'], int(pid)) for pid, ships in frame.get('entities', {}).items() for ship in ships.values()]
         for pid, share in enumerate(_territory(width, height, sources, players)):
             shares[pid] += share
+        for pid, share in enumerate(_vision(width, height, sources, players, radius)):
+            seen[pid] += share
         samples += 1
     for pid in range(players):
         stats[pid]['territory'] = round(shares[pid] / samples, 4) if samples else 0.0
+        stats[pid]['vision'] = round(seen[pid] / samples, 4) if samples else 0.0
     return stats
 
 
@@ -126,7 +146,8 @@ def record(db, match_id, replay=None):
 
 
 def backfill(db, limit=500):
-    rows = db.execute("SELECT m.id FROM matches m WHERE m.status='complete' AND m.replay_key IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_players p WHERE p.match_id=m.id) LIMIT ?", (limit,)).fetchall()
+    # Matches without statistics, plus ones recorded before the vision column existed.
+    rows = db.execute("SELECT m.id FROM matches m WHERE m.status='complete' AND m.replay_key IS NOT NULL AND (NOT EXISTS (SELECT 1 FROM match_players p WHERE p.match_id=m.id) OR EXISTS (SELECT 1 FROM match_players p WHERE p.match_id=m.id AND p.vision IS NULL)) LIMIT ?", (limit,)).fetchall()
     done = 0
     for row in rows:
         try:

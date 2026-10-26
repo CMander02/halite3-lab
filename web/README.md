@@ -8,7 +8,7 @@
   - `src/components/ShipLaunch.tsx`：首页 / 登录页轮换的像素发射动画（6 种船型，月相随轮次推进）。
   - `src/replay/`：回放页与 Canvas 棋盘（抖动矿量、按移动方向旋转的船、迷雾视角、沉船标记）。桌面端 100% 缩放不滚动即可看完整战况和进度条；手机端首屏为棋盘 + 全部玩家 + 控制条，下滑查看数据与近期对战。
 - `backend/profiles.py`：头像（注册即分配全站唯一的 8×8 对角对称像素头像，可上传 PNG 替换 / 恢复默认）、显示名称、`/api/leaderboard/stats` 子榜、`/api/summary`。
-- `backend/analytics.py`：从回放计算每局每座位的击沉 / 被击沉 / 同归、抢劫与损失货物、搬运、采矿、圈地（`match_players` 表），新比赛完成时写入，启动时回填旧比赛。
+- `backend/analytics.py`：从回放计算每局每座位的击沉 / 被击沉 / 同归、抢劫与损失货物、搬运、采矿、视野（`match_players` 表），新比赛完成时写入，启动时回填旧比赛。
 - `CAPACITY.md`：42 个版本规模下的赛程、耗时与回放存储（含 D1）估算。
 - `backend/`：FastAPI、Argon2id 账号、会话、API Token、SQLite 任务队列、编译缓存。
 - `runner/sandbox.py`：C++ 参赛进程与平台固定基准的 Bubblewrap 与 systemd scope 启动器；不使用 Docker 执行 bot。

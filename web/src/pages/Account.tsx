@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from "react";
-import { Upload, Reload, Copy, Check, Trash, Plus, Logout, Edit, Image as ImageIcon } from "@nsmr/pixelart-react";
+import { Upload, Reload, Copy, Check, Trash, Plus, Logout, Edit, Image as ImageIcon, Lock, Avatar as AvatarIcon, Shield, Command } from "@nsmr/pixelart-react";
 import type { Profile, User } from "@/lib/types";
 import { api, date, number, useApi } from "@/lib/api";
 import { navigate, useLocation } from "@/lib/router";
@@ -37,7 +37,7 @@ function PasswordPanel() {
     }
   };
   return (
-    <Panel title="修改密码">
+    <Panel title="修改密码" icon={Lock}>
       <form onSubmit={submit} className="grid gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="pw-current">当前密码</Label>
@@ -243,7 +243,7 @@ export default function Account({ user, onChange }: { user: User | null; onChang
       )}
       <ErrorBox message={message || profile.error} />
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-        <Panel title="头像" ticks>
+        <Panel title="头像" icon={AvatarIcon} tone="orange" ticks>
           <div className="flex flex-col items-center gap-4">
             <Avatar className="size-32 bg-paper ring-2 ring-ink ring-offset-4 ring-offset-paper-2">
               <AvatarImage src={avatarUrl(user.id, p?.avatar_version ?? user.avatar_version)} alt="我的头像" className="[image-rendering:pixelated]" />
@@ -307,7 +307,7 @@ export default function Account({ user, onChange }: { user: User | null; onChang
 
           <PasswordPanel />
 
-          <Panel title="API Token">
+          <Panel title="API Token" icon={Shield} tone="green">
             <p className="mt-0 text-ink-2">Token 只显示一次，30 天有效，可访问当前账号的 Bot 与测试。不要写进 Bot 源码或分享给他人。</p>
             <form onSubmit={createToken} className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex flex-1 flex-col gap-1.5">
@@ -352,7 +352,7 @@ export default function Account({ user, onChange }: { user: User | null; onChang
             </div>
           </Panel>
 
-          <Panel title="命令行">
+          <Panel title="命令行" icon={Command} tone="ink">
             <pre className={cn("m-0 overflow-x-auto bg-ink p-3 text-paper")}>
               {`python3 web/client.py login\npython3 web/client.py upload bot.cpp --name my-bot --version 1.0 --trace session.jsonl\npython3 web/client.py test --bots BOT_ID,builtin-baseline --modes 2`}
             </pre>

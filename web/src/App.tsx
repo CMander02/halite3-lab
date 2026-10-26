@@ -45,10 +45,10 @@ export type Session = { user: User | null; refresh: () => Promise<void> };
 function Logo() {
   return (
     <a href="/" className="flex items-center gap-2 whitespace-nowrap" aria-label="Halite 3 Arena 首页">
-      <span className="notch flex size-8 items-center justify-center bg-blue text-white">
-        <Ship size={20} />
+      <span className="notch flex size-9 items-center justify-center bg-blue text-white">
+        <Ship size={24} />
       </span>
-      <span className="leading-[14px]">
+      <span className="font-pixel text-[12px] leading-[14px]">
         HALITE III
         <br />
         <span className="text-blue">ARENA</span>
@@ -132,7 +132,7 @@ export default function App() {
   else
     page = (
       <div className="py-24 text-center">
-        <div className="text-[72px] leading-[72px] text-blue">404</div>
+        <div className="font-pixel text-[72px] leading-[72px] text-blue">404</div>
         <p className="text-ink-2">这片海域还没有被探索。</p>
         <Button asChild>
           <a href="/">返回港口 &gt;</a>
@@ -147,16 +147,16 @@ export default function App() {
     <TooltipProvider delayDuration={150}>
       <div className="flex min-h-svh flex-col">
         <header className="sticky top-0 z-40 border-b border-line bg-paper/95 backdrop-blur-[2px]">
-          <div className="mx-auto flex h-[52px] max-w-[1440px] items-center gap-4 px-4 sm:h-[60px] sm:px-6">
+          <div className="mx-auto flex h-[56px] max-w-[1440px] items-center gap-4 px-4 sm:h-[64px] sm:px-6">
             <Logo />
-            <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="主导航">
+            <nav className="ml-6 hidden items-center gap-1 md:flex lg:ml-10 lg:gap-2" aria-label="主导航">
               {NAV.map((item) => (
                 <a
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "relative px-3 py-2 transition-colors duration-200 hover:text-blue",
-                    active(item.href) ? "text-blue after:absolute after:inset-x-3 after:-bottom-[9px] after:h-[2px] after:bg-blue sm:after:-bottom-[13px]" : "text-ink",
+                    "relative px-3 py-2 text-[18px] leading-[28px] transition-colors duration-200 hover:text-blue",
+                    active(item.href) ? "font-bold text-blue after:absolute after:inset-x-3 after:-bottom-[6px] after:h-[3px] after:bg-blue sm:after:-bottom-[10px]" : "text-ink",
                   )}
                 >
                   {item.label}
@@ -203,7 +203,7 @@ export default function App() {
                           {active(item.href) ? "> " : ""}
                           {item.label}
                         </span>
-                        <span className="text-[12px] text-ink-3">{item.code}</span>
+                        <span className="font-pixel text-[12px] text-ink-3">{item.code}</span>
                       </a>
                     ))}
                   </nav>

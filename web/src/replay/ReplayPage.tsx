@@ -293,7 +293,7 @@ export default function ReplayPage({ id }: { id: string }) {
                 <th className="right">K/D/A</th>
                 <th className="right">抢劫</th>
                 <th className="right">搬运</th>
-                <th className="right">圈地</th>
+                <th className="right">视野</th>
               </tr>
             </thead>
             <tbody>
@@ -307,7 +307,7 @@ export default function ReplayPage({ id }: { id: string }) {
                   </td>
                   <td className="right num">{number(s.robbed)}</td>
                   <td className="right num">{number(s.delivered)}</td>
-                  <td className="right num">{percent(s.territory, 1)}</td>
+                  <td className="right num">{s.vision == null ? "—" : percent(s.vision, 1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -349,7 +349,7 @@ export default function ReplayPage({ id }: { id: string }) {
 
   return (
     <>
-      <div className="flex h-[calc(100svh-52px)] min-h-[520px] flex-col sm:h-[calc(100svh-60px)] md:min-h-[480px]">
+      <div className="flex h-[calc(100svh-56px)] min-h-[520px] flex-col sm:h-[calc(100svh-64px)] md:min-h-[480px]">
         {header}
         <div className="flex min-h-0 flex-1">
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-paper p-2 sm:p-3">
@@ -418,7 +418,7 @@ export default function ReplayPage({ id }: { id: string }) {
       <Dialog open={logs !== null} onOpenChange={(open) => !open && setLogs(null)}>
         <DialogContent className="max-w-3xl border border-ink bg-paper">
           <DialogTitle className="font-normal">运行日志</DialogTitle>
-          <pre className="thin-scroll max-h-[60vh] overflow-auto bg-paper-2 p-3 text-[12px] whitespace-pre-wrap">{logs}</pre>
+          <pre className="thin-scroll max-h-[60vh] overflow-auto bg-paper-2 p-3 font-mono text-[13px] whitespace-pre-wrap">{logs}</pre>
         </DialogContent>
       </Dialog>
     </>

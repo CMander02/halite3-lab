@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Loader, WarningBox } from "@nsmr/pixelart-react";
 import { cn } from "@/lib/utils";
+import { IconTile, type Tone } from "@/components/glyphs";
 
 export function PageHead({
   eyebrow,
@@ -17,8 +18,8 @@ export function PageHead({
     <div className="rise mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow && <div className="eyebrow mb-2">{eyebrow}</div>}
-        <h1 className="m-0 text-[24px] leading-[28px] font-normal break-words sm:text-[36px] sm:leading-[40px]">{title}</h1>
-        {description && <p className="mt-2 mb-0 max-w-[560px] text-ink-2">{description}</p>}
+        <h1 className="m-0 font-pixel text-[24px] leading-[28px] font-normal break-words sm:text-[36px] sm:leading-[40px]">{title}</h1>
+        {description && <p className="mt-2 mb-0 max-w-[640px] text-ink-2">{description}</p>}
       </div>
       {action && <div className="flex shrink-0 flex-wrap gap-2">{action}</div>}
     </div>
@@ -27,6 +28,8 @@ export function PageHead({
 
 export function Panel({
   title,
+  icon,
+  tone,
   action,
   children,
   className,
@@ -34,6 +37,9 @@ export function Panel({
   ticks = false,
 }: {
   title?: ReactNode;
+  /** pixelart-react icon or glyphIcon(); shown on a colour tile before the title */
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  tone?: Tone;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -43,9 +49,10 @@ export function Panel({
   return (
     <section className={cn("pixel-frame", ticks && "ticks", className)}>
       {(title || action) && (
-        <header className="flex min-h-11 items-center justify-between gap-3 border-b border-line px-4 py-2">
-          <h2 className="m-0 text-[12px] font-normal">
-            <span className="text-blue">■</span> {title}
+        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-4 py-2">
+          <h2 className="m-0 flex min-w-0 items-center gap-2.5 text-[16px] leading-[24px] font-bold">
+            {icon ? <IconTile icon={icon} tone={tone} size={16} /> : <span className="notch size-2.5 shrink-0 bg-blue" aria-hidden />}
+            <span className="min-w-0">{title}</span>
           </h2>
           {action}
         </header>
@@ -58,7 +65,7 @@ export function Panel({
 export function Stat({ label, value, hint, className }: { label: ReactNode; value: ReactNode; hint?: ReactNode; className?: string }) {
   return (
     <div className={cn("hairline-top pt-3", className)}>
-      <div className="num text-[36px] leading-[40px] text-ink sm:text-[48px] sm:leading-[52px]">{value}</div>
+      <div className="num font-pixel text-[36px] leading-[40px] text-ink sm:text-[48px] sm:leading-[52px]">{value}</div>
       <div className="mt-1 text-ink">{label}</div>
       {hint && <div className="text-ink-3">{hint}</div>}
     </div>
@@ -121,7 +128,7 @@ export function Status({ value }: { value: string }) {
 }
 
 export function Tag({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn("inline-flex items-center border border-line px-1.5 text-[12px] leading-[18px] whitespace-nowrap text-ink-2", className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center border border-line px-1.5 text-[13px] leading-[20px] whitespace-nowrap text-ink-2", className)}>{children}</span>;
 }
 
 export function TierBadge({ tier, className }: { tier: string; className?: string }) {
@@ -131,7 +138,7 @@ export function TierBadge({ tier, className }: { tier: string; className?: strin
     B: "bg-blue-100 text-blue-700",
     C: "bg-paper text-ink-2 border border-line",
   };
-  return <span className={cn("notch inline-flex size-7 items-center justify-center text-[12px]", tone[tier] || tone.C, className)}>{tier}</span>;
+  return <span className={cn("notch inline-flex size-7 items-center justify-center font-pixel text-[12px]", tone[tier] || tone.C, className)}>{tier}</span>;
 }
 
 /** Proportional pixel bar (stepped by 2px to keep the grid). */

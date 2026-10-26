@@ -946,6 +946,18 @@ class ProfileAndAnalyticsTest(unittest.TestCase):
         self.assertEqual(p1["lost"], 700)
         self.assertEqual(p0["delivered"], 900)
         self.assertGreater(p0["territory"], p1["territory"])
+        # radius-4 diamonds on an 8x8 torus: player 0 sees more cells (base + ships at (1,2) and (5,5))
+        self.assertGreater(p0["vision"], p1["vision"])
+        self.assertLessEqual(p0["vision"], 1.0)
+
+    def test_vision_share(self):
+        from backend.analytics import _vision
+        # one source, radius 1 on a 10x10 torus: 5 cells; radius 4: 41 cells (no wrap overlap)
+        self.assertEqual(_vision(10, 10, [(0, 0, 0)], 1, 1), [0.05])
+        self.assertEqual(_vision(10, 10, [(0, 0, 0)], 1, 4), [0.41])
+        # overlapping sources are not double counted; small torus caps at the whole map
+        self.assertEqual(_vision(10, 10, [(0, 0, 0), (0, 0, 0)], 1, 1), [0.05])
+        self.assertEqual(_vision(4, 4, [(0, 0, 0)], 1, 4), [1.0])
 
 
 

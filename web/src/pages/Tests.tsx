@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Plus, Play, Reload, Close, ArrowRight, ArrowLeft } from "@nsmr/pixelart-react";
+import { Plus, Play, Reload, Close, ArrowRight, ArrowLeft, List, Tournament } from "@nsmr/pixelart-react";
 import type { Bot, Job, User } from "@/lib/types";
 import { api, date, number, useApi } from "@/lib/api";
 import { navigate, useLocation } from "@/lib/router";
@@ -116,9 +116,9 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <Status value={job.status} />
-                  <div className="num mt-1 text-[48px] leading-[48px]">
+                  <div className="num mt-1 font-pixel text-[48px] leading-[48px]">
                     {number(job.counts.complete || 0)}
-                    <span className="text-[24px] text-ink-3"> / {number(job.total)}</span>
+                    <span className="font-pixel text-[24px] text-ink-3"> / {number(job.total)}</span>
                   </div>
                   <div className="text-ink-2">
                     等待 {job.counts.queued || 0} · 运行 {job.counts.running || 0} · 失败 {job.counts.failed || 0} · 取消 {job.counts.cancelled || 0}
@@ -140,7 +140,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
               {Boolean(job.counts.failed) && !job.retryable && <p className="text-warn">历史任务含有不再支持的版本，无法重试。请上传 C++17 版本新建测试。</p>}
               <Progress job={job} />
             </section>
-            <Panel title="比赛记录" action={<span className="text-ink-3">每 3 秒更新</span>} bodyClassName="p-0">
+            <Panel title="比赛记录" icon={List} action={<span className="text-ink-3">每 3 秒更新</span>} bodyClassName="p-0">
               <MatchList matches={job.matches || []} />
             </Panel>
           </div>
@@ -163,7 +163,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
       />
       <ErrorBox message={list.error || message} />
       {create && (
-        <Panel title="新建私人循环赛" className="mb-6" ticks>
+        <Panel title="新建私人循环赛" icon={Tournament} tone="blue" className="mb-6" ticks>
           <form onSubmit={submit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-1.5 sm:max-w-md">
               <Label htmlFor="job-name">任务名称</Label>
@@ -228,7 +228,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
             </label>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <div>
-                <span className="num text-[24px] leading-[28px] text-blue">{number(count)}</span> 场比赛
+                <span className="num font-pixel text-[24px] leading-[28px] text-blue">{number(count)}</span> 场比赛
                 <div className="text-ink-3">2 / 8 人 32×32 · 200 回合；4 人 48×48 · 300 回合 · 单任务上限 300 场</div>
               </div>
               <Button size="lg" disabled={busy || count === 0 || count > 300 || selected.length > 10 || modes.some((k) => selected.length < k)}>

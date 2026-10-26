@@ -1,11 +1,11 @@
-import { ArrowLeft, ArrowRight, Download, Trophy } from "@nsmr/pixelart-react";
+import { ArrowLeft, ArrowRight, Download, Trophy, TrendingUp, GitCommit } from "@nsmr/pixelart-react";
 import type { BotProfile, User } from "@/lib/types";
 import { date, percent, useApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Empty, ErrorBox, Loading, PageHead, Panel, Stat, Tag, TierBadge } from "@/components/pixel";
 import { BotIcon } from "@/components/BotIcon";
-import { SetupLine, correctionLabel, useCatalog } from "@/components/ModelBadge";
+import { SetupCells, correctionLabel, useCatalog } from "@/components/ModelBadge";
 import { VersionEloChart } from "@/components/charts";
 
 const STAGE: Record<string, string> = { draft: "草稿", upcoming: "未开始", open: "提交中", closed: "评测中", finished: "已结束" };
@@ -55,18 +55,20 @@ export default function BotDetail({ id, user }: { id: string; user: User | null 
         <Stat label="参加比赛" value={contests.size} />
       </div>
       {versions.length > 1 && (
-        <Panel title="版本迭代 · ELO" className="mb-6">
+        <Panel title="版本迭代 · ELO" icon={TrendingUp} tone="blue" className="mb-6">
           <VersionEloChart data={chart} />
           <p className="mt-2 mb-0 text-ink-3">蓝线：全局修正后 ELO；虚线：原始 ELO；黑线：比赛中的修正后 ELO（有正式结果用正式结果，否则用提交期临时 ELO）。</p>
         </Panel>
       )}
-      <Panel title="版本" bodyClassName="p-0 overflow-x-auto">
+      <Panel title="版本" icon={GitCommit} bodyClassName="p-0 overflow-x-auto">
         {versions.length ? (
           <table className="ptable">
             <thead>
               <tr>
                 <th>版本</th>
-                <th>模型 · 推理 · 平台</th>
+                <th>模型</th>
+                <th>推理</th>
+                <th>平台</th>
                 <th className="right">原始 ELO</th>
                 <th className="right text-blue">修正后</th>
                 <th className="right">总榜</th>
@@ -90,7 +92,7 @@ export default function BotDetail({ id, user }: { id: string; user: User | null 
                     <div className="truncate text-ink-2">{v.notes || "未填写版本说明"}</div>
                     <div className="text-ink-3">{date(v.created_at)}</div>
                   </td>
-                  <td className="max-w-[240px]">{bot.builtin ? <span className="text-ink-3">平台基准</span> : <SetupLine attribution={v.attribution} catalog={catalog} compact />}</td>
+                  <SetupCells attribution={bot.builtin ? null : v.attribution} catalog={catalog} />
                   <td className="right num text-ink-2">
                     {v.elo ? (
                       <>

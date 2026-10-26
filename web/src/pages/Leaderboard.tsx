@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Trophy, Zap, Briefcase, Truck, Map as MapIcon, Coin, ArrowRight, Scale } from "@nsmr/pixelart-react";
-import type { BoardEntry, EloEntry, LeaderEntry } from "@/lib/types";
-import { SetupLine, correctionLabel, useCatalog } from "@/components/ModelBadge";
+import { Trophy, Zap, Briefcase, Truck, Eye, ArrowRight, Scale, List } from "@nsmr/pixelart-react";
+import { glyphIcon } from "@/components/glyphs";
+import type { BoardEntry, CatalogKind, EloEntry, LeaderEntry } from "@/lib/types";
+import { KIND_LABEL, SETUP_KINDS, SetupCells, correctionLabel, entry, useCatalog } from "@/components/ModelBadge";
 import { compact, number, percent, useApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,12 @@ import { Empty, ErrorBox, Loading, PageHead, Panel, TierBadge } from "@/componen
 import { UserAvatar } from "@/components/UserAvatar";
 import { MetricBars } from "@/components/charts";
 
+const Pickaxe = glyphIcon("pickaxe");
+
 type Board = {
   key: string;
   label: string;
-  icon: typeof Zap;
+  icon: typeof Zap | typeof Pickaxe;
   value: (e: BoardEntry) => number;
   format: (v: number) => string;
   note: string;
@@ -61,12 +64,12 @@ const BOARDS: Board[] = [
     ],
   },
   {
-    key: "territory",
-    label: "圈地",
-    icon: MapIcon,
-    value: (e) => e.territory,
+    key: "vision",
+    label: "视野",
+    icon: Eye,
+    value: (e) => e.vision ?? 0,
     format: (v) => percent(v, 1),
-    note: "按回合采样，统计离己方船只或建筑最近（环面曼哈顿距离，平局不计）的格子占全图比例，取平均。",
+    note: "按回合采样，统计己方船只、基地和落点照亮的格子（迷雾规则的视野半径，环面曼哈顿距离）占全图比例，取平均。",
     columns: [
       { label: "平均名次", value: (e) => e.avg_rank.toFixed(2) },
       { label: "场均造船", value: (e) => (e.ships_built || 0).toFixed(1) },
@@ -76,7 +79,7 @@ const BOARDS: Board[] = [
   {
     key: "mined",
     label: "采矿",
-    icon: Coin,
+    icon: Pickaxe,
     value: (e) => e.mined,
     format: (v) => compact(v),
     note: "场均从地面采集的矿量。",
@@ -136,11 +139,11 @@ function SubBoard({ board, entries }: { board: Board; entries: BoardEntry[] }) {
           <tbody>
             {sorted.map((e, i) => (
               <tr key={e.version_id}>
-                <td className={cn("num", i < 3 ? "text-blue" : "text-ink-3")}>{String(i + 1).padStart(2, "0")}</td>
+                <td className={cn("num font-pixel", i < 3 ? "text-blue" : "text-ink-3")}>{String(i + 1).padStart(2, "0")}</td>
                 <td className="max-w-[220px]">
                   <Who e={e} />
                 </td>
-                <td className="right num text-[24px] leading-[24px]">{board.format(board.value(e))}</td>
+                <td className="right num font-pixel text-[24px] leading-[24px]">{board.format(board.value(e))}</td>
                 {board.columns.map((c) => (
                   <td key={c.label} className="right num text-ink-2">
                     {c.value(e)}
@@ -156,47 +159,98 @@ function SubBoard({ board, entries }: { board: Board; entries: BoardEntry[] }) {
   );
 }
 
+const ALL = "";
+
+/** Filters for the three setup columns; options come from the entries actually on the board. */
+function SetupFilters({ entries, value, onChange, catalog }: { entries: EloEntry[]; value: Record<CatalogKind, string>; onChange: (v: Record<CatalogKind, string>) => void; catalog: ReturnType<typeof useCatalog> }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {SETUP_KINDS.map((kind) => {
+        const ids = [...new Set(entries.map((e) => e.attribution?.[kind].value).filter((v): v is string => Boolean(v)))];
+        return (
+          <label key={kind} className="flex items-center gap-2">
+            <span className="text-ink-2">{KIND_LABEL[kind]}</span>
+            <select
+              value={value[kind]}
+              onChange={(e) => onChange({ ...value, [kind]: e.target.value })}
+              className="h-8 min-w-28 cursor-pointer border border-line bg-paper-2 px-2 outline-none focus:border-ink"
+            >
+              <option value={ALL}>全部</option>
+              {ids.map((id) => (
+                <option key={id} value={id}>
+                  {entry(catalog, kind, id).name}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
+      {SETUP_KINDS.some((k) => value[k]) && (
+        <button className="cursor-pointer text-blue hover:underline" onClick={() => onChange({ model: ALL, effort: ALL, harness: ALL })}>
+          清除筛选
+        </button>
+      )}
+    </div>
+  );
+}
+
 function EloBoard({ entries }: { entries: EloEntry[] }) {
   const catalog = useCatalog();
+  const [filter, setFilter] = useState<Record<CatalogKind, string>>({ model: ALL, effort: ALL, harness: ALL });
+  const active = SETUP_KINDS.some((k) => filter[k]);
+  // Baselines have no setup: keep them as reference rows unless a filter is active.
+  const shown = entries.filter((e) => (e.attribution ? SETUP_KINDS.every((k) => !filter[k] || e.attribution![k].value === filter[k]) : !active));
   if (!entries.length) return <Empty title="还没有完成评测的版本">在“Bots”上传版本并参加评测后，这里按修正后 ELO 排名。</Empty>;
   return (
-    <table className="ptable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Bot</th>
-          <th>模型 · 推理 · 平台</th>
-          <th className="right">原始 ELO</th>
-          <th className="right">修正</th>
-          <th className="right text-blue">修正后 ELO</th>
-          <th className="right">胜率</th>
-          <th className="right">场次</th>
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((e) => (
-          <tr key={e.version_id} className={e.builtin ? "bg-paper" : ""}>
-            <td className={cn("num", e.rank && e.rank <= 3 ? "text-blue" : "text-ink-3")}>{e.rank ? String(e.rank).padStart(2, "0") : "基准"}</td>
-            <td className="max-w-[220px]">
-              <a href={`/bots/${e.bot_id}`} className="block hover:text-blue">
-                <Who e={e} />
-              </a>
-            </td>
-            <td className="max-w-[300px]">
-              <SetupLine attribution={e.attribution} catalog={catalog} />
-            </td>
-            <td className="right num text-ink-2">
-              {Math.round(e.elo)}
-              <span className="text-ink-3"> ±{Math.round(e.elo_sd)}</span>
-            </td>
-            <td className="right num text-ink-2">{e.builtin ? "—" : correctionLabel(e.correction)}</td>
-            <td className="right num text-[24px] leading-[24px]">{Math.round(e.adjusted_elo)}</td>
-            <td className="right num">{percent(e.win_rate)}</td>
-            <td className="right num text-ink-3">{e.games}</td>
+    <>
+      <div className="border-b border-line px-4 py-3">
+        <SetupFilters entries={entries} value={filter} onChange={setFilter} catalog={catalog} />
+      </div>
+      <table className="ptable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Bot</th>
+            <th>模型</th>
+            <th>推理</th>
+            <th>平台</th>
+            <th className="right">原始 ELO</th>
+            <th className="right">修正合计</th>
+            <th className="right text-blue">修正后 ELO</th>
+            <th className="right">胜率</th>
+            <th className="right">场次</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {shown.map((e) => (
+            <tr key={e.version_id} className={e.builtin ? "bg-paper" : ""}>
+              <td className={cn("num font-pixel whitespace-nowrap", e.rank && e.rank <= 3 ? "text-blue" : "text-ink-3")}>{e.rank ? String(e.rank).padStart(2, "0") : "基准"}</td>
+              <td className="max-w-[220px]">
+                <a href={`/bots/${e.bot_id}`} className="block hover:text-blue">
+                  <Who e={e} />
+                </a>
+              </td>
+              <SetupCells attribution={e.attribution} catalog={catalog} />
+              <td className="right num whitespace-nowrap text-ink-2">
+                {Math.round(e.elo)}
+                <span className="text-ink-3"> ±{Math.round(e.elo_sd)}</span>
+              </td>
+              <td className="right num text-ink-2">{e.builtin ? "—" : correctionLabel(e.correction)}</td>
+              <td className="right num font-pixel text-[24px] leading-[24px]">{Math.round(e.adjusted_elo)}</td>
+              <td className="right num">{percent(e.win_rate)}</td>
+              <td className="right num text-ink-3">{e.games}</td>
+            </tr>
+          ))}
+          {!shown.length && (
+            <tr>
+              <td colSpan={10} className="py-8 text-center text-ink-3">
+                没有符合筛选条件的版本
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </>
   );
 }
 
@@ -243,7 +297,7 @@ export default function Leaderboard() {
           <div className="pixel-frame overflow-x-auto p-0">{elo.loading ? <Loading /> : <EloBoard entries={elo.data?.entries || []} />}</div>
           <p className="m-0 max-w-[880px] text-ink-3">
             原始 ELO：对全部公开对局做 Bradley–Terry 极大似然拟合（每局按名次两两比较，多人局按 1/(n−1) 加权，另加对 1500 锚点的一胜一负先验），与比赛顺序无关。
-            修正后 ELO = 原始 ELO − 模型修正 − 推理强度修正 − 平台修正；强模型、强推理扣分更多。用户声明与轨迹检测不一致时按修正更大的一方计算，管理员可以人工确认。平台基准不做修正、不参与排名。
+            修正后 ELO = 原始 ELO − 模型修正 − 推理强度修正 − 平台修正，三项分列在对应列下方；强模型、强推理扣分更多。用户声明与轨迹检测不一致时按修正更大的一方计算，管理员可以人工确认。平台基准不做修正、不参与排名。
           </p>
         </TabsContent>
 
@@ -258,8 +312,8 @@ export default function Leaderboard() {
                   return (
                     <div key={tier} className="flex min-h-16 border-b border-line last:border-0">
                       <div className={cn("flex w-20 shrink-0 flex-col items-center justify-center gap-1 border-r border-line sm:w-28", tier === "S" && "bg-ink text-paper", tier === "A" && "bg-blue text-white", tier === "B" && "bg-blue-100", tier === "C" && "bg-paper")}>
-                        <span className="text-[36px] leading-[36px]">{tier}</span>
-                        <span className="text-[12px] opacity-80">{rule}</span>
+                        <span className="font-pixel text-[36px] leading-[36px]">{tier}</span>
+                        <span className="text-[13px] opacity-80">{rule}</span>
                       </div>
                       <div className="flex flex-1 flex-wrap items-center gap-2 p-2">
                         {row.length ? (
@@ -280,7 +334,7 @@ export default function Leaderboard() {
                   );
                 })}
               </div>
-              <Panel title="完整排名" bodyClassName="p-0 overflow-x-auto">
+              <Panel title="完整排名" icon={List} bodyClassName="p-0 overflow-x-auto">
                 {entries.length ? (
                   <table className="ptable">
                     <thead>
@@ -297,14 +351,14 @@ export default function Leaderboard() {
                     <tbody>
                       {entries.map((e, i) => (
                         <tr key={e.version_id}>
-                          <td className="num text-ink-3">{String(i + 1).padStart(2, "0")}</td>
+                          <td className="num font-pixel text-ink-3">{String(i + 1).padStart(2, "0")}</td>
                           <td>
                             <TierBadge tier={e.tier} />
                           </td>
                           <td>
                             <Who e={e} />
                           </td>
-                          <td className="right num text-[24px] leading-[24px]">{(e.win_rate * 100).toFixed(1)}%</td>
+                          <td className="right num font-pixel text-[24px] leading-[24px]">{(e.win_rate * 100).toFixed(1)}%</td>
                           <td className="right num text-ink-2">
                             {e.wins}/{e.games}
                           </td>

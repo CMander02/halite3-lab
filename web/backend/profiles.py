@@ -70,6 +70,9 @@ def migrate(db):
         robbed INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0, delivered INTEGER NOT NULL DEFAULT 0,
         mined INTEGER NOT NULL DEFAULT 0, territory REAL NOT NULL DEFAULT 0, ships_built INTEGER NOT NULL DEFAULT 0,
         dropoffs INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(match_id,seat))''')
+    # NULL marks rows recorded before vision existed; analytics.backfill recomputes them from the replay.
+    if 'vision' not in {row['name'] for row in db.execute('PRAGMA table_info(match_players)')}:
+        db.execute('ALTER TABLE match_players ADD COLUMN vision REAL')
     db.execute('CREATE INDEX IF NOT EXISTS match_players_version ON match_players(version_id)')
     (S.DATA / 'avatars').mkdir(exist_ok=True, mode=0o700)
 
@@ -179,7 +182,7 @@ BOARD_SQL = '''SELECT p.version_id,v.version,b.name AS bot_name,b.builtin,u.disp
     COUNT(*) AS games,SUM(p.rank=1) AS wins,AVG(p.rank) AS avg_rank,AVG(p.score) AS score,
     SUM(p.kills) AS kills,SUM(p.deaths) AS deaths,SUM(p.assists) AS assists,
     SUM(p.robbed) AS robbed,SUM(p.lost) AS lost,AVG(p.delivered) AS delivered,AVG(p.mined) AS mined,
-    AVG(p.territory) AS territory,AVG(p.ships_built) AS ships_built
+    AVG(p.territory) AS territory,AVG(p.vision) AS vision,AVG(p.ships_built) AS ships_built
     FROM match_players p JOIN matches m ON m.id=p.match_id JOIN versions v ON v.id=p.version_id
     JOIN bots b ON b.id=v.bot_id LEFT JOIN users u ON u.id=b.owner_id
     WHERE m.status='complete' AND m.public=1 AND (b.builtin=1 OR v.language='cpp') {mode} GROUP BY p.version_id'''

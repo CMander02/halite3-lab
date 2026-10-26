@@ -53,7 +53,7 @@ function SetupTable({ item }: { item: Submission }) {
               </td>
               <td>
                 <CatalogChip kind={kind} id={p.value} catalog={catalog} />
-                <span className="block text-[12px] text-ink-3">{SOURCE[p.source]}</span>
+                <span className="block text-[13px] text-ink-3">{SOURCE[p.source]}</span>
               </td>
               <td className="right num">{correctionLabel(p.offset)}</td>
             </tr>
@@ -74,7 +74,7 @@ function SubmissionCard({ item, busy, act }: { item: Submission; busy: boolean; 
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)_minmax(220px,0.9fr)]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[24px] leading-[28px] text-blue">v{item.version}</span>
+            <span className="font-pixel text-[24px] leading-[28px] text-blue">v{item.version}</span>
             <Tag>{item.language === "cpp" ? "C++17" : "Python · 历史版本"}</Tag>
             {item.archived && <Tag>已归档</Tag>}
             {!item.listed && <Tag className="border-warn text-warn">不在排行榜显示</Tag>}
@@ -105,7 +105,7 @@ function SubmissionCard({ item, busy, act }: { item: Submission; busy: boolean; 
           {e ? (
             <div className="flex items-end gap-3">
               <div>
-                <div className="num text-[36px] leading-[40px]">{Math.round(e.adjusted_elo)}</div>
+                <div className="num font-pixel text-[36px] leading-[40px]">{Math.round(e.adjusted_elo)}</div>
                 <div className="text-ink-2">修正后 ELO</div>
               </div>
               <div className="pb-1 text-ink-3">
@@ -114,7 +114,7 @@ function SubmissionCard({ item, busy, act }: { item: Submission; busy: boolean; 
                 修正 {correctionLabel(e.correction)}
               </div>
               <div className="ml-auto text-right">
-                <div className="num text-[24px] leading-[28px] text-blue">{e.rank ? `#${e.rank}` : "—"}</div>
+                <div className="num font-pixel text-[24px] leading-[28px] text-blue">{e.rank ? `#${e.rank}` : "—"}</div>
                 <div className="text-ink-3">总排名</div>
               </div>
             </div>

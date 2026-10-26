@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Upload, Play, Trophy, Eye, Grid, Zap, Drop, ChevronsVertical, Download } from "@nsmr/pixelart-react";
+import { Upload, Play, Trophy, Eye, Grid, Zap, Drop, ChevronsVertical, Download, Ship } from "@nsmr/pixelart-react";
+import { IconTile, type Tone } from "@/components/glyphs";
 import type { BoardEntry, LeaderEntry, Match, Summary, User } from "@/lib/types";
 import { compact, number, useApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -9,11 +10,11 @@ import MatchList from "@/components/MatchList";
 import { DailyChart } from "@/components/charts";
 import { UserAvatar } from "@/components/UserAvatar";
 
-const RULES = [
-  { icon: Eye, title: "迷雾视野", text: "每艘船、基地与落点照亮半径 4 的曼哈顿范围，其余海域不可见。" },
-  { icon: Grid, title: "对称礁石", text: "按出生分区对称生成，保持海域连通；撞礁等于原地停留。" },
-  { icon: Zap, title: "轻船抢矿", text: "相撞时唯一最轻的船存活，并夺走被击沉船的全部货物。" },
-  { icon: Drop, title: "同重沉没", text: "最轻重量并列时同归于尽，货物原地落成地面矿；4 人场 3 艘以上同格相撞也一起沉没变矿。" },
+const RULES: { icon: typeof Eye; tone: Tone; title: string; text: string }[] = [
+  { icon: Eye, tone: "ink", title: "迷雾视野", text: "每艘船、基地与落点照亮半径 4 的曼哈顿范围，其余海域不可见。" },
+  { icon: Grid, tone: "green", title: "对称礁石", text: "按出生分区对称生成，保持海域连通；撞礁等于原地停留。" },
+  { icon: Zap, tone: "gold", title: "轻船抢矿", text: "相撞时唯一最轻的船存活，并夺走被击沉船的全部货物。" },
+  { icon: Drop, tone: "orange", title: "同重沉没", text: "最轻重量并列时同归于尽，货物原地落成地面矿；4 人场 3 艘以上同格相撞也一起沉没变矿。" },
 ];
 
 const STEPS = [
@@ -34,14 +35,15 @@ export default function Overview({ user }: { user: User | null }) {
   const topRob = [...(stats.data?.entries || [])].sort((a, b) => b.robbed - a.robbed)[0];
 
   return (
-    <>
+    // the home page is set entirely in Source Han Sans; shared components drop their pixel accents here
+    <div className="all-sans">
       {/* hero: four-corner composition around the launch pad */}
       <section className="relative h-[min(86svh,720px)] min-h-[520px] overflow-hidden border-b border-line">
         <ShipLaunch className="absolute inset-0" onShip={setShipIndex} />
         <div className="pointer-events-none relative mx-auto flex h-full max-w-[1440px] flex-col px-4 pt-6 pb-6 sm:px-6 sm:pt-10">
           <div className="rise max-w-[640px]">
             <div className="eyebrow mb-3">Bot 对战实验室 · 群赛</div>
-            <h1 className="m-0 text-[48px] leading-[48px] font-normal tracking-tight sm:text-[72px] sm:leading-[72px]">
+            <h1 className="m-0 text-[48px] leading-[52px] font-bold tracking-tight sm:text-[72px] sm:leading-[76px]">
               HALITE <span className="text-blue">III</span>
               <br />
               ARENA
@@ -100,6 +102,8 @@ export default function Overview({ user }: { user: User | null }) {
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
           <Panel
             title="近期对战"
+            icon={Ship}
+            tone="blue"
             action={
               <a href="/matches" className="text-blue">
                 全部 &gt;
@@ -112,6 +116,8 @@ export default function Overview({ user }: { user: User | null }) {
           <div className="flex flex-col gap-6">
             <Panel
               title="Tier 榜"
+              icon={Trophy}
+              tone="gold"
               action={
                 <a href="/leaderboard" className="text-blue">
                   排行 &gt;
@@ -160,10 +166,10 @@ export default function Overview({ user }: { user: User | null }) {
         <section>
           <div className="eyebrow mb-4">本赛季规则</div>
           <div className="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
-            {RULES.map(({ icon: Icon, title, text }) => (
+            {RULES.map(({ icon, tone, title, text }) => (
               <div key={title} className="bg-paper-2 p-4">
-                <Icon size={24} className="text-blue" />
-                <div className="mt-3">{title}</div>
+                <IconTile icon={icon} tone={tone} size={24} />
+                <div className="mt-3 text-[18px] font-bold">{title}</div>
                 <p className="mt-1 mb-0 text-ink-2">{text}</p>
               </div>
             ))}
@@ -177,11 +183,11 @@ export default function Overview({ user }: { user: User | null }) {
               <li key={title} className="relative">
                 {i < STEPS.length - 1 && <div className="absolute top-6 left-14 hidden h-0 w-[calc(100%-32px)] border-t-2 border-dashed border-blue-300 md:block" />}
                 <a href={href} className="group relative flex flex-col gap-2">
-                  <span className="relative flex size-12 items-center justify-center border-2 border-ink bg-paper group-hover:bg-blue group-hover:text-white">
+                  <span className="relative flex size-12 items-center justify-center border-2 border-ink bg-blue-50 text-blue group-hover:bg-blue group-hover:text-white">
                     <Icon size={24} />
-                    <span className="absolute -top-2 -right-2 bg-ink px-1 text-paper">{i + 1}</span>
+                    <span className="absolute -top-2 -right-2 bg-ink px-1 text-[13px] leading-[18px] text-paper">{i + 1}</span>
                   </span>
-                  <span className="mt-1">{title}</span>
+                  <span className="mt-1 text-[18px] font-bold">{title}</span>
                   <span className="text-ink-2">{text}</span>
                 </a>
               </li>
@@ -196,6 +202,6 @@ export default function Overview({ user }: { user: User | null }) {
           </div>
         </section>
       </div>
-    </>
+    </div>
   );
 }

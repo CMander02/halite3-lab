@@ -40,7 +40,7 @@ export default function Auth({ mode, onDone }: { mode: "login" | "register"; onD
         <ShipLaunch className="absolute inset-0" pixel={4} />
         <div className="relative">
           <div className="eyebrow mb-3">登船手续</div>
-          <h1 className="m-0 text-[36px] leading-[40px] font-normal">
+          <h1 className="m-0 font-pixel text-[36px] leading-[40px] font-normal">
             你的代码。
             <br />
             你的<span className="text-blue">策略实验室</span>。

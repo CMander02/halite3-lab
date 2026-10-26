@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Trophy, Calendar, Clock, Download, Upload, Lock, Plus, Play, Check, Reload, Trash, Cloud, Code, ArrowLeft, ArrowRight, Flag, Bullseye, Hidden, Copy, Archive } from "@nsmr/pixelart-react";
+import { Trophy, Calendar, Clock, Download, Upload, Lock, Plus, Play, Check, Reload, Trash, ArrowLeft, ArrowRight, Flag, Bullseye, Hidden, Copy, Archive, Article, Script, Server, Analytics, BookOpen, Command, Sliders } from "@nsmr/pixelart-react";
+import { Glyph, glyphIcon } from "@/components/glyphs";
 import type { Bot, CatalogKind, Contest, ContestConfig, ContestEntry, ContestStatus, ContestSummary, Standings, StandingRow, User } from "@/lib/types";
 import { api, date, number, percent, useApi } from "@/lib/api";
 import { navigate } from "@/lib/router";
@@ -10,8 +11,10 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, ErrorBox, Loading, ModeLabel, PageHead, Panel, Status, Tag } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
-import { CatalogSelect, SetupLine, correctionLabel, useCatalog } from "@/components/ModelBadge";
+import { CatalogSelect, SetupCells, correctionLabel, useCatalog } from "@/components/ModelBadge";
 import { Markdown } from "@/components/Markdown";
+
+const MapGlyph = glyphIcon("map", false);
 
 const STATUS: Record<ContestStatus, { label: string; tone: string }> = {
   draft: { label: "草稿", tone: "border-line text-ink-3" },
@@ -300,12 +303,14 @@ function Overview({ contest: c }: { contest: Contest }) {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
           {c.description && (
-            <Panel title="比赛说明">
+            <Panel title="比赛说明" icon={Article}>
               <div className="leading-[22px] whitespace-pre-wrap">{c.description}</div>
             </Panel>
           )}
           <Panel
             title="题目 Prompt"
+            icon={Script}
+            tone="ink"
             action={
               <span className="flex gap-2">
                 <CopyButton text={c.prompt_text} />
@@ -328,7 +333,7 @@ function Overview({ contest: c }: { contest: Contest }) {
               。
             </p>
           </Panel>
-          <Panel title="地图" bodyClassName="p-0 overflow-x-auto">
+          <Panel title="地图" icon={MapGlyph} tone="gold" bodyClassName="p-0 overflow-x-auto">
             <table className="ptable">
               <thead>
                 <tr>
@@ -361,19 +366,19 @@ function Overview({ contest: c }: { contest: Contest }) {
               </tbody>
             </table>
           </Panel>
-          <Panel title="本地测试 vs 云端评测">
+          <Panel title="本地测试 vs 云端评测" icon={Server} tone="blue">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex gap-3">
-                <Code size={24} className="shrink-0 text-blue" />
+                <Glyph name="laptop" size={40} />
                 <div>
-                  <div>本地：随便测</div>
+                  <div className="font-bold">本地：随便测</div>
                   <p className="mt-1 mb-0 text-ink-2">下载题目包，在公开地图上和参考 bot 对战，次数不限。{c.practice ? "" : "提交期的云端评测做的也只是这件事，先在本地调好再提交。"}</p>
                 </div>
               </div>
               <div className="flex gap-3">
-                <Cloud size={24} className="shrink-0 text-blue" />
+                <Glyph name="cloud" size={40} />
                 <div>
-                  <div>云端：{c.practice ? "公开成绩" : "只有这里能做的事"}</div>
+                  <div className="font-bold">云端：{c.practice ? "公开成绩" : "只有这里能做的事"}</div>
                   <p className="mt-1 mb-0 text-ink-2">
                     {c.practice
                       ? "提交后对阵靶子的 12 场立即公开，计入全局 ELO 和 Tier。"
@@ -385,10 +390,10 @@ function Overview({ contest: c }: { contest: Contest }) {
           </Panel>
         </div>
         <div className="flex flex-col gap-6">
-          <Panel title="时间线">
+          <Panel title="时间线" icon={Calendar} tone="orange">
             <Timeline contest={c} />
           </Panel>
-          <Panel title="靶子与参考 bot">
+          <Panel title="靶子与参考 bot" icon={Bullseye} tone="orange">
             {c.base && !c.targets.some((t) => t.version_id === c.base!.version_id) && <BotRow bot={c.base} slug={c.slug} role="基础 bot" />}
             {c.targets.map((t) => (
               <BotRow key={t.version_id} bot={t} slug={c.slug} role={t.version_id === c.base?.version_id ? "靶子 · 基础 bot" : "靶子"} />
@@ -398,14 +403,14 @@ function Overview({ contest: c }: { contest: Contest }) {
             ))}
             <p className="mt-3 mb-0 text-ink-3">靶子参加每次提交的评测{c.practice ? "" : "，也参加正式评测作为基准"}，但不参与排名。</p>
           </Panel>
-          <Panel title="评测进度">
+          <Panel title="评测进度" icon={Analytics} tone="green">
             <div className="grid grid-cols-2 gap-4">
               {(c.practice ? (["bench"] as const) : (["bench", "final"] as const)).map((stage) => {
                 const p = c.progress[stage];
                 return (
                   <div key={stage}>
                     <div className="text-ink-2">{stage === "bench" ? "提交评测" : "正式评测"}</div>
-                    <div className="num text-[24px] leading-[28px]">
+                    <div className="num font-pixel text-[24px] leading-[28px]">
                       {number(p.counts.complete || 0)}
                       <span className="text-ink-3">/{number(p.total)}</span>
                     </div>
@@ -417,7 +422,7 @@ function Overview({ contest: c }: { contest: Contest }) {
           </Panel>
         </div>
       </div>
-      <Panel title="比赛规则" ticks>
+      <Panel title="比赛规则" icon={BookOpen} tone="blue" ticks>
         <Markdown text={c.rules_text} skipTitle />
       </Panel>
     </div>
@@ -459,7 +464,9 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
               <tr>
                 <th>#</th>
                 <th>Bot</th>
-                <th>模型 · 推理 · 平台</th>
+                <th>模型</th>
+                <th>推理</th>
+                <th>平台</th>
                 <th className="right">原始 ELO</th>
                 <th className="right">修正</th>
                 <th className="right text-blue">修正后</th>
@@ -503,7 +510,7 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
 function StandingTr({ row: r, stage, targets, catalog }: { row: StandingRow; stage: string; targets: string[]; catalog: ReturnType<typeof useCatalog> }) {
   return (
     <tr className={cn(r.target && "bg-paper", !r.current && !r.target && "opacity-60")}>
-      <td className={cn("num whitespace-nowrap", r.rank && r.rank <= 3 ? "text-blue" : "text-ink-3")}>{r.rank ? String(r.rank).padStart(2, "0") : r.target ? "靶子" : "—"}</td>
+      <td className={cn("num font-pixel whitespace-nowrap", r.rank && r.rank <= 3 ? "text-blue" : "text-ink-3")}>{r.rank ? String(r.rank).padStart(2, "0") : r.target ? "靶子" : "—"}</td>
       <td className="max-w-[240px]">
         <a href={r.target ? `/matches?version=${r.version_id}` : `/bots/${r.bot_id}`} className="flex min-w-0 items-center gap-2 hover:text-blue">
           <UserAvatar id={r.target ? null : r.user_id} name={r.author || "平台基准"} size="sm" />
@@ -518,13 +525,13 @@ function StandingTr({ row: r, stage, targets, catalog }: { row: StandingRow; sta
           </span>
         </a>
       </td>
-      <td className="max-w-[260px]">{r.target ? <span className="text-ink-3">不修正</span> : <SetupLine attribution={r.attribution} catalog={catalog} compact />}</td>
-      <td className="right num text-ink-2">
+      <SetupCells attribution={r.target ? null : r.attribution} catalog={catalog} empty="不修正" />
+      <td className="right num whitespace-nowrap text-ink-2">
         {Math.round(r.elo)}
         <span className="text-ink-3"> ±{Math.round(r.elo_sd)}</span>
       </td>
       <td className="right num text-ink-2">{r.target ? "—" : correctionLabel(r.correction)}</td>
-      <td className="right num text-[24px] leading-[24px]">{Math.round(r.adjusted_elo)}</td>
+      <td className="right num font-pixel text-[24px] leading-[24px]">{Math.round(r.adjusted_elo)}</td>
       <td className="right num">{percent(r.win_rate)}</td>
       <td className="right num text-ink-2">{r.avg_rank.toFixed(2)}</td>
       <td className="right num text-ink-2">{number(Math.round(r.mean_score))}</td>
@@ -618,7 +625,7 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
   return (
     <div className="flex flex-col gap-6">
       {c.status === "open" && (
-        <Panel title={`提交 bot.cpp · 剩余 ${left} / ${c.max_submissions} 次`}>
+        <Panel icon={Upload} tone="blue" title={`提交 bot.cpp · 剩余 ${left} / ${c.max_submissions} 次`}>
           <form onSubmit={upload} className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="flex min-w-0 flex-col gap-1.5">
@@ -689,7 +696,7 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
         </Panel>
       )}
       {c.status === "open" && (
-        <Panel title="让 Agent 自己提交">
+        <Panel title="让 Agent 自己提交" icon={Command} tone="ink">
           <p className="mt-0 text-ink-2">
             手动上传不需要 API Token。想让 Agent 在会话里自己提交、或者拿着同一个 Bot 反复迭代，就在
             <a className="text-blue" href="/settings">
@@ -698,7 +705,7 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
             </a>
             创建一个 Token 交给它（30 天有效，随时可撤销）。题目包里有 <code>tools/client.py</code>：
           </p>
-          <pre className="m-0 overflow-x-auto border border-line bg-paper-2 p-3 text-[12px] leading-[18px]">
+          <pre className="m-0 overflow-x-auto border border-line bg-paper-2 p-3 font-mono text-[13px] leading-[20px]">
             {`export HALITE_TOKEN=h3_...
 python3 tools/client.py --origin ${location.origin} contest-submit ${c.slug} bot.cpp --bot ${lastBot} \\
     --model <模型> --effort <推理强度> --harness <平台> [--trace 会话.jsonl]
@@ -730,7 +737,7 @@ function EntryCard({ entry: e, contest: c, busy, onPick }: { entry: ContestEntry
   return (
     <section className={cn("pixel-frame", e.current && "border-ink")}>
       <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
-        <span className="num text-[24px] leading-[28px] text-blue">#{e.seq}</span>
+        <span className="num font-pixel text-[24px] leading-[28px] text-blue">#{e.seq}</span>
         <a href={`/bots/${e.bot_id}`} className="hover:text-blue">
           {e.bot_name} <span className="text-ink-3">v{e.version}</span>
         </a>
@@ -827,7 +834,7 @@ function AdminPanel({ contest: c, onChange }: { contest: Contest; onChange: () =
   if (c.practice) return <ContestEditor contest={c} onDone={() => void onChange()} />;
   return (
     <div className="flex flex-col gap-6">
-      <Panel title="正式评测">
+      <Panel title="正式评测" icon={Trophy} tone="gold">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-ink-2">
             {c.final_started_at ? `开始于 ${date(c.final_started_at)}，完成 ${final.counts.complete || 0}/${final.total}${final.counts.failed ? `，失败 ${final.counts.failed}` : ""}` : `按当前提交预计 ${c.final_games_estimate ?? "—"} 场`}
@@ -964,7 +971,7 @@ function ContestEditor({ contest, onDone }: { contest?: Contest; onDone: (id: st
   return (
     <>
       {!contest && <PageHead eyebrow="管理员" title="新建比赛" description="比赛保存为草稿后，勾选“发布”才对选手可见。提交开始后，人数、公开地图、靶子和语言会被冻结。" />}
-      <Panel title={contest ? "编辑比赛" : "比赛设置"}>
+      <Panel title={contest ? "编辑比赛" : "比赛设置"} icon={Sliders}>
         <div className="flex flex-col gap-6">
           <div className="grid gap-4 sm:grid-cols-2">
             {field("c-title", "标题", <Input id="c-title" value={form.title} maxLength={80} onChange={(e) => set("title", e.target.value)} placeholder="第一届群赛" />)}

@@ -199,13 +199,13 @@ function SubmissionsTab({ catalog }: { catalog: AdminCatalog | null }) {
                     </td>
                     <td className="max-w-[280px]">
                       <SetupLine attribution={s.attribution} catalog={catalog} />
-                      {s.admin_note && <span className="block text-[12px] text-ink-3">备注：{s.admin_note}</span>}
+                      {s.admin_note && <span className="block text-[13px] text-ink-3">备注：{s.admin_note}</span>}
                     </td>
                     <td className="text-ink-2">
                       {d ? (
                         <>
                           {d.model} · {d.effort} · {d.harness}
-                          <span className="block text-[12px] text-ink-3">
+                          <span className="block text-[13px] text-ink-3">
                             置信 {CONFIDENCE[d.model_confidence]}/{CONFIDENCE[d.effort_confidence]}/{CONFIDENCE[d.harness_confidence]}
                             {s.attribution.mismatch.length ? <span className="text-warn"> · 不一致：{s.attribution.mismatch.join("、")}</span> : null}
                           </span>
@@ -218,7 +218,7 @@ function SubmissionsTab({ catalog }: { catalog: AdminCatalog | null }) {
                       {s.trace ? (
                         <>
                           {(s.trace.size / 1024 / 1024).toFixed(2)} MiB
-                          {d?.duration_seconds != null && <span className="block text-[12px] text-ink-3">{Math.round(d.duration_seconds / 60)} 分钟 · {number(d.messages)} 条</span>}
+                          {d?.duration_seconds != null && <span className="block text-[13px] text-ink-3">{Math.round(d.duration_seconds / 60)} 分钟 · {number(d.messages)} 条</span>}
                         </>
                       ) : (
                         <span className="text-warn">无</span>
