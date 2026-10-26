@@ -158,7 +158,9 @@ export default function Bots({ user }: { user: User | null }) {
                   )}
                   <div className="min-w-0 flex-1">
                     <h2 className="m-0 flex flex-wrap items-center gap-2 text-[24px] leading-[28px] font-normal">
-                      {bot.name}
+                      <a href={`/bots/${bot.id}`} className="hover:text-blue">
+                        {bot.name}
+                      </a>
                       {bot.builtin === 1 && <Tag>平台基准</Tag>}
                     </h2>
                     <p className="mt-1 mb-0 text-ink-2">{bot.description || "尚未添加简介"}</p>

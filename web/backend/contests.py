@@ -264,10 +264,11 @@ def compute(db, contest, stage):
     model / effort / harness correction is applied the same way."""
     config = json.loads(contest["config_json"])
     hidden = {int(mode): set(seeds) for mode, seeds in config["hidden_maps"].items()}
+    # The final counts only the current final job: a restart discards the previous schedule.
     matches = db.execute(
         """SELECT m.mode,m.seed,m.seat_json,m.result_json FROM matches m JOIN jobs j ON j.id=m.job_id
-        WHERE j.contest_id=? AND j.kind=? AND m.status='complete' AND m.result_json IS NOT NULL""",
-        (contest["id"], f"contest-{stage}"),
+        WHERE j.contest_id=? AND j.kind=? AND (j.kind<>'contest-final' OR j.id=?) AND m.status='complete' AND m.result_json IS NOT NULL""",
+        (contest["id"], f"contest-{stage}", contest["final_job_id"]),
     ).fetchall()
     entries = {row["version_id"]: row for row in db.execute("SELECT * FROM contest_entries WHERE contest_id=?", (contest["id"],))}
     targets = set(config["targets"])
@@ -339,8 +340,9 @@ def compute(db, contest, stage):
 
 def stage_progress(db, contest, stage):
     counts = dict(db.execute(
-        "SELECT m.status,COUNT(*) FROM matches m JOIN jobs j ON j.id=m.job_id WHERE j.contest_id=? AND j.kind=? GROUP BY m.status",
-        (contest["id"], f"contest-{stage}"),
+        """SELECT m.status,COUNT(*) FROM matches m JOIN jobs j ON j.id=m.job_id
+        WHERE j.contest_id=? AND j.kind=? AND (j.kind<>'contest-final' OR j.id=?) GROUP BY m.status""",
+        (contest["id"], f"contest-{stage}", contest["final_job_id"]),
     ).fetchall())
     return {"counts": counts, "total": sum(counts.values())}
 
@@ -558,8 +560,9 @@ def download(key: str, version_id: str, request: Request):
 
 
 @router.get("/api/contests/{key}/setup/{mode}")
-def local_setup(key: str, mode: int, request: Request):
-    """Map size, turns and rules of one mode, for running the same games locally."""
+def local_setup(key: str, mode: int, request: Request, rules_only: bool = False):
+    """Map size, turns and rules of one mode, for running the same games locally
+    (rules_only=true returns just the engine's -c rules file)."""
     user = user_for(request, False)
     with connect() as db:
         row = load(db, key, user)
@@ -567,6 +570,8 @@ def local_setup(key: str, mode: int, request: Request):
     if mode not in config["modes"]:
         raise HTTPException(404, "这场比赛没有这个人数模式。")
     setup = config["setups"][str(mode)]
+    if rules_only:
+        return setup["rules"]
     return {"mode": mode, "width": setup["width"], "height": setup["height"], "turns": setup["turns"],
             "seconds": setup["seconds"], "rules": setup["rules"], "public_maps": config["public_maps"][str(mode)]}
 

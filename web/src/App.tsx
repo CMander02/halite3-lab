@@ -28,10 +28,13 @@ const Account = lazy(() => import("@/pages/Account"));
 const Auth = lazy(() => import("@/pages/Auth"));
 const Me = lazy(() => import("@/pages/Me"));
 const Admin = lazy(() => import("@/pages/Admin"));
+const Contests = lazy(() => import("@/pages/Contests"));
+const BotDetail = lazy(() => import("@/pages/BotDetail"));
 
 const NAV = [
   { href: "/", label: "概览", code: "HOME" },
   { href: "/matches", label: "对战", code: "MATCH" },
+  { href: "/contests", label: "比赛", code: "CUP" },
   { href: "/leaderboard", label: "排行", code: "RANK" },
   { href: "/bots", label: "Bots", code: "BOTS" },
   { href: "/tests", label: "测试", code: "TEST" },
@@ -110,6 +113,8 @@ export default function App() {
 
   const matchId = path.match(/^\/matches\/([^/]+)$/)?.[1];
   const jobId = path.match(/^\/tests\/([^/]+)$/)?.[1];
+  const contestSlug = path.match(/^\/contests\/([^/]+)$/)?.[1];
+  const botId = path.match(/^\/bots\/([^/]+)$/)?.[1];
   const refresh = async () => void (await session.refresh());
   let page;
   if (path === "/") page = <Overview user={user} />;
@@ -117,6 +122,8 @@ export default function App() {
   else if (path === "/matches") page = <Matches user={user} />;
   else if (path === "/leaderboard") page = <Leaderboard />;
   else if (path === "/bots") page = <Bots user={user} />;
+  else if (botId) page = <BotDetail key={botId} id={botId} user={user} />;
+  else if (path === "/contests" || contestSlug) page = <Contests key={contestSlug || ""} user={user} slug={contestSlug} />;
   else if (path === "/tests" || jobId) page = <Tests user={user} jobId={jobId} />;
   else if (path === "/me") page = <Me user={user} />;
   else if (path === "/admin") page = <Admin user={user} />;
