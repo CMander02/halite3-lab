@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Trophy, Calendar, Clock, Download, Upload, Lock, Plus, Play, Check, Reload, Trash, Cloud, Code, ArrowLeft, ArrowRight, Flag, Bullseye, Hidden } from "@nsmr/pixelart-react";
-import type { Bot, Contest, ContestConfig, ContestEntry, ContestStatus, ContestSummary, Standings, StandingRow, User } from "@/lib/types";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Trophy, Calendar, Clock, Download, Upload, Lock, Plus, Play, Check, Reload, Trash, Cloud, Code, ArrowLeft, ArrowRight, Flag, Bullseye, Hidden, Copy, Archive } from "@nsmr/pixelart-react";
+import type { Bot, CatalogKind, Contest, ContestConfig, ContestEntry, ContestStatus, ContestSummary, Standings, StandingRow, User } from "@/lib/types";
 import { api, date, number, percent, useApi } from "@/lib/api";
 import { navigate } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, ErrorBox, Loading, ModeLabel, PageHead, Panel, Status, Tag } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
-import { SetupLine, correctionLabel, useCatalog } from "@/components/ModelBadge";
+import { CatalogSelect, SetupLine, correctionLabel, useCatalog } from "@/components/ModelBadge";
+import { Markdown } from "@/components/Markdown";
 
 const STATUS: Record<ContestStatus, { label: string; tone: string }> = {
   draft: { label: "草稿", tone: "border-line text-ink-3" },
@@ -44,6 +45,7 @@ function useNow(interval = 30000) {
 
 function Countdown({ contest }: { contest: ContestSummary }) {
   const t = useNow();
+  if (contest.practice) return <span>常驻测试赛 · 随时提交，不截止</span>;
   if (contest.status === "upcoming") return <span>{span(contest.open_at - t)}后开放提交</span>;
   if (contest.status === "open") return <span className="text-blue">距截止 {span(contest.close_at - t)}</span>;
   if (contest.status === "closed") return <span>提交已截止，正式评测进行中</span>;
@@ -93,7 +95,9 @@ function ContestList({ user }: { user: User | null }) {
                     <a key={c.id} href={`/contests/${c.slug}`} className={cn("pixel-frame flex flex-col gap-3 p-4 hover:border-ink", c.status === "open" && "ticks")}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-[24px] leading-[28px]">{c.title}</div>
+                          <div className="text-[24px] leading-[28px]">
+                            <span className="text-blue">#{c.number}</span> {c.title}
+                          </div>
                           <div className="mt-1 text-ink-2">{c.summary || "—"}</div>
                         </div>
                         <StatusTag status={c.status} />
@@ -147,7 +151,11 @@ function ContestDetail({ user, slug }: { user: User | null; slug: string }) {
       </a>
       <PageHead
         eyebrow="比赛"
-        title={c.title}
+        title={
+          <>
+            <span className="text-blue">#{c.number}</span> {c.title}
+          </>
+        }
         description={
           <>
             {c.summary && <span className="mb-2 block">{c.summary}</span>}
@@ -157,12 +165,18 @@ function ContestDetail({ user, slug }: { user: User | null; slug: string }) {
           </>
         }
         action={
-          c.status === "open" &&
-          user && (
-            <Button onClick={() => setTab("mine")}>
-              <Upload size={16} /> 提交 bot
+          <>
+            <Button variant="outline" asChild>
+              <a href={`/api/contests/${c.slug}/kit.zip`} download>
+                <Archive size={16} /> 下载题目包
+              </a>
             </Button>
-          )
+            {c.status === "open" && user && (
+              <Button onClick={() => setTab("mine")}>
+                <Upload size={16} /> 提交 bot.cpp
+              </Button>
+            )}
+          </>
         }
       />
       <ErrorBox message={error} />
@@ -211,6 +225,10 @@ function Timeline({ contest: c }: { contest: Contest }) {
     ["正式评测", c.final_started_at, "全部最终版本 + 靶子互相对战，包含隐藏地图"],
     ["公布结果", c.finalized_at, "排名冻结，全部对局和回放公开，计入全局 ELO"],
   ];
+  if (c.practice) {
+    steps.splice(2);
+    steps[1][2] = `每次提交与靶子打 ${c.bench_games} 场，立即公开并计入全局 ELO`;
+  }
   return (
     <ol className="m-0 flex list-none flex-col p-0">
       {steps.map(([label, at, note], i) => {
@@ -257,110 +275,151 @@ function BotRow({ bot, slug, role }: { bot: Contest["targets"][number]; slug: st
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() =>
+        void navigator.clipboard.writeText(text).then(() => {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1500);
+        })
+      }
+    >
+      {done ? <Check size={14} /> : <Copy size={14} />} {done ? "已复制" : "复制"}
+    </Button>
+  );
+}
+
 function Overview({ contest: c }: { contest: Contest }) {
   const extra = c.downloads.filter((d) => !c.targets.some((t) => t.version_id === d.version_id) && d.version_id !== c.base?.version_id);
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-      <div className="flex flex-col gap-6">
-        <Panel title="比赛说明">
-          {c.description ? <div className="leading-[22px] whitespace-pre-wrap">{c.description}</div> : <span className="text-ink-3">管理员还没有写说明。</span>}
-        </Panel>
-        <Panel title="地图与规则" bodyClassName="p-0 overflow-x-auto">
-          <table className="ptable">
-            <thead>
-              <tr>
-                <th>模式</th>
-                <th>地图</th>
-                <th className="right">回合</th>
-                <th className="right">单场时限</th>
-                <th>公开地图（种子）</th>
-                <th>隐藏地图</th>
-              </tr>
-            </thead>
-            <tbody>
-              {c.modes.map((m) => {
-                const map = c.maps[String(m)];
+    <div className="flex flex-col gap-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-6">
+          {c.description && (
+            <Panel title="比赛说明">
+              <div className="leading-[22px] whitespace-pre-wrap">{c.description}</div>
+            </Panel>
+          )}
+          <Panel
+            title="题目 Prompt"
+            action={
+              <span className="flex gap-2">
+                <CopyButton text={c.prompt_text} />
+                <Button size="sm" asChild>
+                  <a href={`/api/contests/${c.slug}/kit.zip`} download>
+                    <Archive size={14} /> 题目包
+                  </a>
+                </Button>
+              </span>
+            }
+          >
+            <div className="max-h-[420px] overflow-y-auto pr-2">
+              <Markdown text={c.prompt_text} skipTitle />
+            </div>
+            <p className="mt-3 mb-0 border-t border-line pt-3 text-ink-3">
+              题目包（ZIP）：PROMPT.md、RULES.md、协议、公开地图（种子、规则文件和渲染好的地形 / 矿量）、参考 bot 源码、C++ 起点 <code>starter/bot.cpp</code> 和提交用的 <code>tools/client.py</code>。可以整包交给 Agent；也可以让 Agent 读{" "}
+              <a className="text-blue" href={`/api/contests/${c.slug}/prompt.md`} target="_blank" rel="noreferrer">
+                prompt.md
+              </a>
+              。
+            </p>
+          </Panel>
+          <Panel title="地图" bodyClassName="p-0 overflow-x-auto">
+            <table className="ptable">
+              <thead>
+                <tr>
+                  <th>模式</th>
+                  <th>地图</th>
+                  <th className="right">回合</th>
+                  <th className="right">单场时限</th>
+                  <th>公开地图（种子）</th>
+                  <th>隐藏地图</th>
+                </tr>
+              </thead>
+              <tbody>
+                {c.modes.map((m) => {
+                  const map = c.maps[String(m)];
+                  return (
+                    <tr key={m}>
+                      <td>
+                        <ModeLabel mode={m} />
+                      </td>
+                      <td className="num">
+                        {map.width}×{map.height}
+                      </td>
+                      <td className="right num">{map.turns}</td>
+                      <td className="right num">{map.seconds} 秒</td>
+                      <td className="num">{map.public.join(" / ")}</td>
+                      <td className="num text-ink-2">{c.practice ? "—" : map.hidden ? map.hidden.join(" / ") || "—" : map.hidden_count ? `${map.hidden_count} 张，结果公布时揭晓` : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Panel>
+          <Panel title="本地测试 vs 云端评测">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex gap-3">
+                <Code size={24} className="shrink-0 text-blue" />
+                <div>
+                  <div>本地：随便测</div>
+                  <p className="mt-1 mb-0 text-ink-2">下载题目包，在公开地图上和参考 bot 对战，次数不限。{c.practice ? "" : "提交期的云端评测做的也只是这件事，先在本地调好再提交。"}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Cloud size={24} className="shrink-0 text-blue" />
+                <div>
+                  <div>云端：{c.practice ? "公开成绩" : "只有这里能做的事"}</div>
+                  <p className="mt-1 mb-0 text-ink-2">
+                    {c.practice
+                      ? "提交后对阵靶子的 12 场立即公开，计入全局 ELO 和 Tier。"
+                      : "截止后的正式评测：对手是其他选手的最终版本（你拿不到），地图包含隐藏地图，所有人同一个沙箱和时限，并按模型 / 推理强度修正 ELO。"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Panel>
+        </div>
+        <div className="flex flex-col gap-6">
+          <Panel title="时间线">
+            <Timeline contest={c} />
+          </Panel>
+          <Panel title="靶子与参考 bot">
+            {c.base && !c.targets.some((t) => t.version_id === c.base!.version_id) && <BotRow bot={c.base} slug={c.slug} role="基础 bot" />}
+            {c.targets.map((t) => (
+              <BotRow key={t.version_id} bot={t} slug={c.slug} role={t.version_id === c.base?.version_id ? "靶子 · 基础 bot" : "靶子"} />
+            ))}
+            {extra.map((t) => (
+              <BotRow key={t.version_id} bot={t} slug={c.slug} role="参考" />
+            ))}
+            <p className="mt-3 mb-0 text-ink-3">靶子参加每次提交的评测{c.practice ? "" : "，也参加正式评测作为基准"}，但不参与排名。</p>
+          </Panel>
+          <Panel title="评测进度">
+            <div className="grid grid-cols-2 gap-4">
+              {(c.practice ? (["bench"] as const) : (["bench", "final"] as const)).map((stage) => {
+                const p = c.progress[stage];
                 return (
-                  <tr key={m}>
-                    <td>
-                      <ModeLabel mode={m} />
-                    </td>
-                    <td className="num">
-                      {map.width}×{map.height}
-                    </td>
-                    <td className="right num">{map.turns}</td>
-                    <td className="right num">{map.seconds} 秒</td>
-                    <td className="num">{map.public.join(" / ")}</td>
-                    <td className="num text-ink-2">{map.hidden ? map.hidden.join(" / ") || "—" : map.hidden_count ? `${map.hidden_count} 张，结果公布时揭晓` : "—"}</td>
-                  </tr>
+                  <div key={stage}>
+                    <div className="text-ink-2">{stage === "bench" ? "提交评测" : "正式评测"}</div>
+                    <div className="num text-[24px] leading-[28px]">
+                      {number(p.counts.complete || 0)}
+                      <span className="text-ink-3">/{number(p.total)}</span>
+                    </div>
+                    {p.counts.queued || p.counts.running ? <div className="text-ink-3">排队 {(p.counts.queued || 0) + (p.counts.running || 0)}</div> : null}
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-          <p className="m-0 border-t border-line px-4 py-3 text-ink-3">
-            语言：{c.languages.map((l) => LANG[l]).join(" / ")}。每人最多提交 {c.max_submissions} 次。规则参数（迷雾、礁石、碰撞）随比赛冻结，详见下方本地测试配置。
-          </p>
-        </Panel>
-        <Panel title="本地测试 vs 云端评测">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex gap-3">
-              <Code size={24} className="shrink-0 text-blue" />
-              <div>
-                <div>本地：随便测</div>
-                <p className="mt-1 mb-0 text-ink-2">下载靶子和规则配置，在公开地图上和靶子对战，次数不限。云端提交期间做的也只是这件事，所以先在本地调好再提交。</p>
-              </div>
             </div>
-            <div className="flex gap-3">
-              <Cloud size={24} className="shrink-0 text-blue" />
-              <div>
-                <div>云端：只有这里能做的事</div>
-                <p className="mt-1 mb-0 text-ink-2">截止后的正式评测：对手是其他选手的最终版本（你拿不到），地图包含隐藏地图，所有人同一个沙箱和时限，并按模型 / 推理强度修正 ELO。提交期间的临时 ELO 是公开的进度参考。</p>
-              </div>
-            </div>
-          </div>
-          <pre className="mt-4 mb-0 overflow-x-auto border border-line bg-paper-2 p-3 text-[12px] leading-[18px]">
-            {[
-              "# 引擎：github.com/CMander02/halite3-lab，按 README 编译出 build/halite；靶子 ZIP 解压到 target1/、target2/ …",
-              ...c.modes.map((m) => {
-                const map = c.maps[String(m)];
-                return `curl -so rules-${m}.json "${location.origin}/api/contests/${c.slug}/setup/${m}?rules_only=true"\n./build/halite --width ${map.width} --height ${map.height} --turn-limit ${map.turns} --seed ${map.public[0]} -c rules-${m}.json -i replays/ ${Array.from({ length: m }, (_, i) => (i === 0 ? '"./mybot"' : `"python3 target${i}/bot.py"`)).join(" ")}`;
-              }),
-            ].join("\n")}
-          </pre>
-        </Panel>
+          </Panel>
+        </div>
       </div>
-      <div className="flex flex-col gap-6">
-        <Panel title="时间线">
-          <Timeline contest={c} />
-        </Panel>
-        <Panel title="靶子与基础 bot">
-          {c.base && !c.targets.some((t) => t.version_id === c.base!.version_id) && <BotRow bot={c.base} slug={c.slug} role="基础 bot" />}
-          {c.targets.map((t) => (
-            <BotRow key={t.version_id} bot={t} slug={c.slug} role={t.version_id === c.base?.version_id ? "靶子 · 基础 bot" : "靶子"} />
-          ))}
-          {extra.map((t) => (
-            <BotRow key={t.version_id} bot={t} slug={c.slug} role="参考" />
-          ))}
-          <p className="mt-3 mb-0 text-ink-3">靶子参加每次提交的评测，也参加正式评测作为基准，但不参与排名。</p>
-        </Panel>
-        <Panel title="评测进度">
-          <div className="grid grid-cols-2 gap-4">
-            {(["bench", "final"] as const).map((stage) => {
-              const p = c.progress[stage];
-              return (
-                <div key={stage}>
-                  <div className="text-ink-2">{stage === "bench" ? "提交评测" : "正式评测"}</div>
-                  <div className="num text-[24px] leading-[28px]">
-                    {number(p.counts.complete || 0)}
-                    <span className="text-ink-3">/{number(p.total)}</span>
-                  </div>
-                  {p.counts.queued || p.counts.running ? <div className="text-ink-3">排队 {(p.counts.queued || 0) + (p.counts.running || 0)}</div> : null}
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-      </div>
+      <Panel title="比赛规则" ticks>
+        <Markdown text={c.rules_text} skipTitle />
+      </Panel>
     </div>
   );
 }
@@ -381,7 +440,7 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
           value={stage}
           onChange={(v) => setStage(v as "bench" | "final")}
           options={[
-            ["bench", c.status === "finished" ? "提交期（临时）" : "临时排名"],
+            ["bench", c.practice ? "排名" : c.status === "finished" ? "提交期（临时）" : "临时排名"],
             ...(canFinal ? ([["final", c.status === "finished" ? "正式排名" : "正式评测（仅管理员）"]] as [string, string][]) : []),
           ]}
         />
@@ -430,7 +489,9 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
         )}
       </div>
       <p className="m-0 max-w-[880px] text-ink-3">
-        {stage === "bench"
+        {c.practice
+          ? "排名来自每次提交与 baseline、raider 的 12 场对局，用 Bradley–Terry 拟合 ELO。每人以最后一次提交排名；靶子和历史提交不占名次。这些对局同时计入全局 ELO。"
+          : stage === "bench"
           ? "临时排名只来自与靶子的对局：所有提交面对同一组靶子和公开地图，用 Bradley–Terry 拟合出可比的 ELO。每人以当前选定（默认最后一次）的提交排名；靶子和历史提交不占名次。"
           : "正式排名来自截止后的循环赛：每人的最终版本与其他选手和靶子在公开 + 隐藏地图上对战（1v1 双循环换座，多人局多轮随机分组）。"}
         修正后 ELO = 原始 ELO − 模型 / 推理强度 / 平台修正，和全局 ELO 总榜相同。{data?.final ? `结果已冻结于 ${date(data.computed_at)}。` : ""}
@@ -496,19 +557,31 @@ function Toggle({ value, onChange, options }: { value: string; onChange: (v: str
   );
 }
 
+const SETUP_KEY = "halite3-last-setup";
+const lastSetup = (): Record<CatalogKind, string> => {
+  try {
+    return { model: "unknown", effort: "unknown", harness: "unknown", ...JSON.parse(localStorage.getItem(SETUP_KEY) || "{}") };
+  } catch {
+    return { model: "unknown", effort: "unknown", harness: "unknown" };
+  }
+};
+
 function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () => Promise<void> }) {
   const entries = useApi<{ entries: ContestEntry[] }>(`/contests/${c.slug}/entries`, c.status === "open" ? 15000 : 0);
   const bots = useApi<{ bots: Bot[] }>(c.status === "open" ? "/bots" : null);
+  const catalog = useCatalog();
+  const [setup, setSetup] = useState(lastSetup);
   const [version, setVersion] = useState("");
-  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const list = entries.data?.entries || [];
   const used = new Set(list.map((e) => e.version_id));
-  const options = (bots.data?.bots || [])
-    .filter((b) => b.owned)
-    .flatMap((b) => b.versions.filter((v) => !v.archived && c.languages.includes(v.language) && !used.has(v.id)).map((v) => ({ id: v.id, label: `${b.name} v${v.version} · ${LANG[v.language]}`, at: v.created_at })))
+  const owned = (bots.data?.bots || []).filter((b) => b.owned);
+  const canonical: string[] = c.languages.map((l) => (l === "cpp" ? "bot.cpp" : "bot.py"));
+  const options = owned
+    .flatMap((b) => b.versions.filter((v) => !v.archived && c.languages.includes(v.language) && canonical.includes(v.filename) && !used.has(v.id)).map((v) => ({ id: v.id, label: `${b.name} v${v.version}`, at: v.created_at })))
     .sort((a, b) => b.at - a.at);
+  const lastBot = list[0]?.bot_name || c.slug;
   const left = c.max_submissions - list.length;
 
   async function run(task: () => Promise<unknown>) {
@@ -517,6 +590,7 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
     try {
       await task();
       await entries.refresh();
+      await bots.refresh();
       await onChange();
     } catch (e) {
       setMessage((e as Error).message);
@@ -525,43 +599,111 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
     }
   }
 
-  const submit = () =>
-    run(async () => {
-      await api(`/contests/${c.slug}/entries`, { method: "POST", body: JSON.stringify({ version_id: version || options[0]?.id, note }) });
-      setVersion("");
-      setNote("");
+  const upload = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const target = event.currentTarget;
+    void run(async () => {
+      const file = form.get("file") as File;
+      if (!canonical.includes(file.name)) throw new Error(`请上传规范命名的 ${canonical.join(" 或 ")}（当前是 ${file.name}）。`);
+      const trace = form.get("trace") as File | null;
+      if (!trace || !trace.size) form.delete("trace");
+      else if (trace.size > 16 * 1024 * 1024) throw new Error("对话轨迹不能超过 16 MiB，可以先用 gzip 压缩。");
+      localStorage.setItem(SETUP_KEY, JSON.stringify(setup));
+      await api(`/contests/${c.slug}/submit`, { method: "POST", body: form });
+      target.reset();
     });
+  };
 
   return (
     <div className="flex flex-col gap-6">
       {c.status === "open" && (
-        <Panel title={`提交新版本 · 剩余 ${left} / ${c.max_submissions} 次`}>
-          {options.length ? (
+        <Panel title={`提交 bot.cpp · 剩余 ${left} / ${c.max_submissions} 次`}>
+          <form onSubmit={upload} className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="c-bot">Bot 名称</Label>
+                <Input id="c-bot" name="bot" list="c-bot-names" defaultValue={lastBot} key={lastBot} maxLength={60} required />
+                <datalist id="c-bot-names">
+                  {owned.map((b) => (
+                    <option key={b.id} value={b.name} />
+                  ))}
+                </datalist>
+                <span className="text-ink-3">同名就是在同一个 Bot 上迭代新版本</span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="c-file">{canonical.join(" / ")}</Label>
+                <Input id="c-file" name="file" type="file" accept={c.languages.includes("python") ? ".cpp,.py" : ".cpp"} required className="pt-1.5" />
+                <span className="text-ink-3">单文件，文件名必须是 {canonical.join(" 或 ")}</span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor="c-trace">Agent 轨迹（可选）</Label>
+                <Input id="c-trace" name="trace" type="file" accept=".jsonl,.json,.md,.txt,.gz,.zip" className="pt-1.5" />
+                <span className="text-ink-3">用来确定模型和推理强度，仅自己和管理员可见</span>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {(
+                [
+                  ["model", "模型"],
+                  ["effort", "推理强度"],
+                  ["harness", "平台 / Agent"],
+                ] as [CatalogKind, string][]
+              ).map(([kind, label]) => (
+                <div key={kind} className="flex min-w-0 flex-col gap-1.5">
+                  <Label htmlFor={`c-${kind}`}>{label}</Label>
+                  <CatalogSelect id={`c-${kind}`} kind={kind} name={kind} catalog={catalog} value={setup[kind]} onChange={(v) => setSetup({ ...setup, [kind]: v })} />
+                </div>
+              ))}
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Label htmlFor="entry-version">Bot 版本</Label>
-                <select id="entry-version" value={version || options[0].id} onChange={(e) => setVersion(e.target.value)} className="h-9 border border-line bg-paper-2 px-2 outline-none focus:border-ink">
+                <Label htmlFor="c-note">备注（可选）</Label>
+                <Input id="c-note" name="note" maxLength={500} placeholder="这次改了什么" />
+              </div>
+              <Button disabled={busy || left <= 0}>
+                <Upload size={14} /> {busy ? "提交中…" : `上传并提交（${c.bench_games} 场）`}
+              </Button>
+            </div>
+          </form>
+          {options.length > 0 && (
+            <details className="mt-4 border-t border-line pt-3">
+              <summary className="cursor-pointer text-ink-2">或者提交一个已经上传过的 {canonical.join(" / ")} 版本</summary>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <select aria-label="已上传的版本" value={version || options[0].id} onChange={(e) => setVersion(e.target.value)} className="h-9 min-w-0 flex-1 border border-line bg-paper-2 px-2 outline-none focus:border-ink">
                   {options.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.label}
                     </option>
                   ))}
                 </select>
+                <Button variant="outline" disabled={busy || left <= 0} onClick={() => void run(() => api(`/contests/${c.slug}/entries`, { method: "POST", body: JSON.stringify({ version_id: version || options[0].id }) }))}>
+                  提交这个版本
+                </Button>
               </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <Label htmlFor="entry-note">备注（可选）</Label>
-                <Input id="entry-note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="这次改了什么" />
-              </div>
-              <Button disabled={busy || left <= 0} onClick={() => void submit()}>
-                <Upload size={14} /> 提交（{c.bench_games} 场）
-              </Button>
-            </div>
-          ) : (
-            <Empty title="没有可提交的版本">
-              在 <a className="text-blue" href="/bots">Bots</a> 上传新版本（{c.languages.map((l) => LANG[l]).join(" / ")}）后回到这里。每个版本只能提交一次。
-            </Empty>
+            </details>
           )}
-          <p className="mt-3 mb-0 text-ink-3">新提交会取消上一次提交还在排队的对局，并自动成为参加正式评测的版本；也可以把任意一次历史提交设为正式版本。</p>
+          <p className="mt-3 mb-0 text-ink-3">
+            {c.practice ? "每次提交与 baseline、raider 各打 6 场，成绩立即公开。" : "新提交会取消上一次提交还在排队的对局，并自动成为参加正式评测的版本；也可以把任意一次历史提交设为正式版本。"}
+          </p>
+        </Panel>
+      )}
+      {c.status === "open" && (
+        <Panel title="让 Agent 自己提交">
+          <p className="mt-0 text-ink-2">
+            手动上传不需要 API Token。想让 Agent 在会话里自己提交、或者拿着同一个 Bot 反复迭代，就在
+            <a className="text-blue" href="/settings">
+              {" "}
+              账号与头像{" "}
+            </a>
+            创建一个 Token 交给它（30 天有效，随时可撤销）。题目包里有 <code>tools/client.py</code>：
+          </p>
+          <pre className="m-0 overflow-x-auto border border-line bg-paper-2 p-3 text-[12px] leading-[18px]">
+            {`export HALITE_TOKEN=h3_...
+python3 tools/client.py --origin ${location.origin} contest-submit ${c.slug} bot.cpp --bot ${lastBot} \\
+    --model <模型> --effort <推理强度> --harness <平台> [--trace 会话.jsonl]
+python3 tools/client.py --origin ${location.origin} contest-status ${c.slug}`}
+          </pre>
         </Panel>
       )}
       <ErrorBox message={message || entries.error} />
@@ -574,7 +716,7 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
           ))}
         </div>
       ) : (
-        <Empty title="还没有提交">{c.status === "open" ? "选择一个版本提交，开始和靶子对战。" : "这场比赛你没有提交。"}</Empty>
+        <Empty title="还没有提交">{c.status === "open" ? "上传 bot.cpp，开始和靶子对战。" : "这场比赛你没有提交。"}</Empty>
       )}
     </div>
   );
@@ -682,6 +824,7 @@ function AdminPanel({ contest: c, onChange }: { contest: Contest; onChange: () =
   }
   const final = c.progress.final;
   const closed = c.status === "closed" || c.status === "finished";
+  if (c.practice) return <ContestEditor contest={c} onDone={() => void onChange()} />;
   return (
     <div className="flex flex-col gap-6">
       <Panel title="正式评测">
@@ -738,6 +881,8 @@ function ContestEditor({ contest, onDone }: { contest?: Contest; onDone: (id: st
     title: contest?.title || "",
     summary: contest?.summary || "",
     description: contest?.description || "",
+    prompt: contest?.prompt || "",
+    rules: contest?.rules || "",
     visible_at: toLocal(contest ? contest.visible_at : hour),
     open_at: toLocal(contest?.open_at || hour + 86400),
     close_at: toLocal(contest?.close_at || hour + 8 * 86400),
@@ -748,7 +893,7 @@ function ContestEditor({ contest, onDone }: { contest?: Contest; onDone: (id: st
     targets: cfg.targets || ["builtin-baseline-v1", "builtin-raider-v1"],
     base_version_id: cfg.base_version_id ?? "builtin-baseline-v1",
     downloads: cfg.downloads || ["builtin-baseline-v1", "builtin-raider-v1"],
-    languages: cfg.languages || ["cpp", "python"],
+    languages: cfg.languages || ["cpp"],
     max_submissions: cfg.max_submissions ?? 20,
     bench_rotate: cfg.bench_rotate ?? true,
     final_rounds: cfg.final_rounds ?? 4,
@@ -828,8 +973,18 @@ function ContestEditor({ contest, onDone }: { contest?: Contest; onDone: (id: st
           {field("c-summary", "一句话简介", <Input id="c-summary" value={form.summary} maxLength={200} onChange={(e) => set("summary", e.target.value)} />)}
           {field(
             "c-desc",
-            "说明（题面）",
+            "比赛说明",
             <textarea id="c-desc" rows={8} maxLength={20000} value={form.description} onChange={(e) => set("description", e.target.value)} className="border border-line bg-paper-2 p-2 outline-none focus:border-ink" />,
+          )}
+          {field(
+            "c-prompt",
+            "题目 Prompt（给 Agent 的任务描述）",
+            <textarea id="c-prompt" rows={6} maxLength={20000} value={form.prompt} onChange={(e) => set("prompt", e.target.value)} placeholder="留空使用默认题目；提交方式、规则会自动附在后面" className="border border-line bg-paper-2 p-2 outline-none focus:border-ink" />,
+          )}
+          {field(
+            "c-rules",
+            "补充规则",
+            <textarea id="c-rules" rows={4} maxLength={20000} value={form.rules} onChange={(e) => set("rules", e.target.value)} placeholder="地图、评测、提交规则由配置自动生成；这里只写额外约定，显示在规则末尾" className="border border-line bg-paper-2 p-2 outline-none focus:border-ink" />,
           )}
           <div className="grid gap-4 sm:grid-cols-3">
             {field("c-visible", "开放浏览", <Input id="c-visible" type="datetime-local" value={form.visible_at} onChange={(e) => set("visible_at", e.target.value)} />, "留空：发布即可见")}
