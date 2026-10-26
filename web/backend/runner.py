@@ -19,7 +19,7 @@ import uuid
 from . import settings as S
 from .db import connect, initialize, now
 from .storage import disk_check
-from . import analytics
+from . import analytics, contests
 from .builds import prepare, BotBuildError
 
 log = logging.getLogger("halite3.runner")
@@ -335,7 +335,8 @@ def cleanup():
         db.execute("DELETE FROM api_tokens WHERE expires_at<?", (now(),))
         db.execute("DELETE FROM rate_limits WHERE reset_at<?", (now(),))
         rows = db.execute(
-            "SELECT id,replay_key FROM matches WHERE finished_at<? AND replay_key IS NOT NULL AND public=0",
+            # Contest replays stay private until the results are published, then become public; keep them.
+            "SELECT id,replay_key FROM matches WHERE finished_at<? AND replay_key IS NOT NULL AND public=0 AND job_id NOT IN (SELECT id FROM jobs WHERE contest_id IS NOT NULL)",
             (cutoff,),
         ).fetchall()
         for row in rows:
@@ -371,13 +372,16 @@ def main():
             stderr=subprocess.DEVNULL,
             timeout=20,
         )
-        last_cleanup = 0
+        last_cleanup = last_tick = 0
         while not STOP:
             try:
                 heartbeat()
                 if now() - last_cleanup > 3600:
                     cleanup()
                     last_cleanup = now()
+                if now() - last_tick >= 15:
+                    contests.tick()
+                    last_tick = now()
                 disk_check()
                 match = claim()
                 if match:

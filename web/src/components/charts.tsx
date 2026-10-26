@@ -79,3 +79,25 @@ export function MetricBars({
     </ChartContainer>
   );
 }
+
+/** ELO across a bot's versions (oldest first); gaps where a version has no rating. */
+export function VersionEloChart({ data, className }: { data: { label: string; elo?: number; adjusted?: number; contest?: number }[]; className?: string }) {
+  const config: ChartConfig = {
+    adjusted: { label: "修正后 ELO", color: "var(--blue)" },
+    elo: { label: "原始 ELO", color: "var(--ink-3)" },
+    contest: { label: "比赛临时 ELO", color: "var(--ink)" },
+  };
+  return (
+    <ChartContainer config={config} className={cn("aspect-auto h-[220px] w-full", frame, className)}>
+      <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
+        {grid}
+        <XAxis dataKey="label" {...axis} interval="preserveStartEnd" minTickGap={12} />
+        <YAxis {...axis} width={44} domain={["auto", "auto"]} allowDecimals={false} />
+        <ChartTooltip cursor={{ stroke: "var(--ink)", strokeDasharray: "2 2" }} content={<ChartTooltipContent indicator="line" />} />
+        <Line dataKey="elo" type="linear" stroke="var(--ink-3)" strokeDasharray="3 3" strokeWidth={1} dot={{ r: 2 }} connectNulls isAnimationActive={false} />
+        <Line dataKey="contest" type="linear" stroke="var(--ink)" strokeWidth={1} dot={{ r: 2 }} connectNulls isAnimationActive={false} />
+        <Line dataKey="adjusted" type="linear" stroke="var(--blue)" strokeWidth={2} dot={{ r: 3 }} connectNulls isAnimationActive={false} />
+      </LineChart>
+    </ChartContainer>
+  );
+}

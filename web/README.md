@@ -96,6 +96,24 @@ python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
   --trace ~/.claude/projects/<项目>/<会话>.jsonl --model claude-opus-5-5 --effort high --harness claude-code --rank
 ```
 
+## 比赛（赛季）
+
+管理员在 `/contests/new` 创建比赛（`backend/contests.py`）。每场比赛有自己的说明、靶子 bot、基础 bot、开放下载的版本、人数模式、公开地图和隐藏地图（地图 = 种子 + 该模式的尺寸 / 回合 / 规则，创建时冻结进比赛配置）、每人提交次数上限，以及三个时间：开放浏览、开放提交、提交截止。状态由时间推出：草稿 → 即将开始 → 提交中 → 正式评测中 → 已结束。
+
+- **提交期**：选手把自己的某个版本提交到比赛（`POST /api/contests/{slug}/entries`），每次提交按序号记录，同一版本只能提交一次。每次提交只和靶子在公开地图上对战（1v1 换座；4 人场候选 + 3 个靶子座位轮换 4 次；8 人场 2 个座位偏移），新提交会取消自己上一次提交还在排队的对局。选手之间此时不对战。所有提交面对同一组靶子，因此用 Bradley–Terry 拟合出可比的**临时 ELO**，排行页按模式和总榜展示，同时列出对每个靶子的得分率。提交开始后，人数模式、公开地图、靶子、语言和座位轮换不能再改。
+- **正式评测**：截止后执行器（`contests.tick()`，每 15 秒）自动排正式赛程：每人选定的提交（默认最后一次，可在提交期内改选）+ 靶子，在公开 + 隐藏地图上对战；1v1 双循环换座，4 / 8 人局每张地图按 `final_rounds` 轮随机分组（人数不够时用靶子补位，选手不会占两个座位）。管理员也可以手动开始、重新开始、重试失败对局、手动公布。
+- **公布结果**：正式评测全部完成后自动冻结排名（`standings_json`），隐藏地图种子公开，比赛的全部对局设为公开。**比赛对局在公布前不进入全局 ELO**，公布后和固定评测一样计入 `/api/leaderboard/elo`。
+- **本地测试**：概览页提供靶子 / 基础 bot 下载（`/api/contests/{slug}/downloads/{version_id}`）、每个模式的规则文件（`/api/contests/{slug}/setup/{mode}?rules_only=true`）和引擎命令。提交期的云端评测和本地测的是同一件事；只有云端能做的是正式评测：对手是其他选手的最终版本、隐藏地图、统一沙箱与时限、模型 / 推理强度修正。
+- 靶子、基础 bot 和下载只能选平台基准或管理员自己的版本。提交评测的对局属于选手（按用户轮转调度），正式评测属于管理员；比赛对局的回放不受 30 天私人回放清理影响。
+
+- **题目包与规则**：比赛页（不是首页）提供“下载题目包”（`GET /api/contests/{slug}/kit.zip`）：`PROMPT.md` 题目（管理员写的题目 prompt，留空用默认模板，自动附上提交方式）、`RULES.md` 文字规则、`PROTOCOL.md` 协议、`maps/`（公开地图的种子、规则文件，以及用引擎跑一回合渲染出的地形 / 矿量 / 出生点，缓存在数据目录 `contest-maps/`）、`bots/` 参考 bot 源码、`starter/bot.cpp` 和 `tools/client.py`。`GET /api/contests/{slug}/prompt.md` 是题目 + 规则的纯文本。文字规则由冻结的比赛配置生成（时间、提交要求、评测与 ELO、每个模式的地图和规则开关、运行限制），管理员的“补充规则”接在末尾，显示在比赛概览页最下面。
+- **提交 bot.cpp**：比赛只接受规范命名的单文件 `bot.cpp`（允许 Python 的比赛为 `bot.py`）。`POST /api/contests/{slug}/submit`（multipart：`file`、可选 `trace`、`bot`、`version`、`note`、`model` / `effort` / `harness`）一步完成上传和提交：`bot` 同名就是在同一个 Bot 上迭代，首次使用自动创建，版本号自动递增。网页手动上传不需要 API Token；要让 Agent 在会话里自己提交或反复迭代，给它一个 API Token，用 `client.py contest-submit / contest-status / kit`。Agent 轨迹现在是可选的（`HALITE_REQUIRE_TRACE=1` 可恢复强制）。
+- **#0 测试比赛**（`test-0`）：常驻、不截止、没有正式评测。它就是原来的 12 场固定评测：启动迁移把所有历史“参评”任务按时间收为 #0 的提交，之后每次参评（Bots 页的按钮、上传时勾选、或在 #0 提交 bot.cpp）都会自动记入 #0，对局立即公开并计入全局 ELO 和 Tier。
+
+主要接口：`GET /api/contests`、`GET /api/contests/{slug}`、`GET /api/contests/{slug}/standings?stage=bench|final`、`GET/POST /api/contests/{slug}/entries`、`PUT /api/contests/{slug}/pick`；管理：`POST/PUT/DELETE /api/admin/contests[/{id}]`、`POST /api/admin/contests/{id}/final|finalize|retry`、`GET /api/admin/contest-options`。
+
+**Bot 页面**（`/bots/{id}`，`GET /api/bots/{id}/profile`）：Bot 的全部版本按时间排列，显示全局原始 / 修正后 ELO、总榜名次、Tier、每个版本参加过的比赛（临时 ELO 或正式名次），以及版本迭代的 ELO 折线。作者和管理员看到全部版本；其他人只看到已上榜或参加过比赛的版本。
+
 ## 比赛、回放与排名
 
 单任务最多 300 场、每用户滚动 24 小时最多 500 场、同时最多 3 个未完成任务。每用户最多 30 个 bot、200 个版本，上传源码合计 256 MiB。全盘空闲低于 8 GiB 时暂停新上传、新测试和执行。配额在 `backend/settings.py` 配置。
