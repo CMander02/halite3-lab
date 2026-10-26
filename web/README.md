@@ -11,11 +11,11 @@
 - `backend/analytics.py`：从回放计算每局每座位的击沉 / 被击沉 / 同归、抢劫与损失货物、搬运、采矿、圈地（`match_players` 表），新比赛完成时写入，启动时回填旧比赛。
 - `CAPACITY.md`：42 个版本规模下的赛程、耗时与回放存储（含 D1）估算。
 - `backend/`：FastAPI、Argon2id 账号、会话、API Token、SQLite 任务队列、编译缓存。
-- `runner/sandbox.py`：原生 Python / C++ 进程的 Bubblewrap 与 systemd scope 启动器；不使用 Docker 执行 bot。
+- `runner/sandbox.py`：C++ 参赛进程与平台固定基准的 Bubblewrap 与 systemd scope 启动器；不使用 Docker 执行 bot。
 - `examples/cpp/main.cpp`：适配改版观测协议的 C++ 示例。
 - `client.py`：标准库 CLI，直接上传到后端和提交测试。
 - `redirect/`：仅负责主域 `/halite3` 跳转的 Worker。
-- `tests/`：账号隔离、不可变版本、排队重试、真实 C++/Python 比赛等后端测试。
+- `tests/`：账号隔离、不可变版本、排队重试、C++ 上传限制和真实 C++ 对战平台基准等后端测试。
 
 运行数据默认 `web/data/`；正式服务通过 `HALITE_DATA_DIR` 使用 `/home/cmander/Services/halite3/data/`。数据、Token、密码、上传源码、回放及编译产物不进入 Git。
 
@@ -40,7 +40,9 @@ npm run dev
 
 ## Bot 文件与最新版本
 
-支持 `.py`、`.cpp`、`.cc`、`.cxx` 或 ZIP，上传文件最多 5 MiB；ZIP 最多 64 个条目，解压后最多 20 MiB，拒绝路径穿越、符号链接、加密 ZIP。Python ZIP 根目录放 `bot.py`。C++ ZIP 可以包含头文件及最多 24 个 `.cpp/.cc/.cxx` 编译单元，后端统一使用 `g++ -std=c++17 -O2 -pipe` 编译；提供 `<nlohmann/json.hpp>`，不执行上传项目的 Makefile、CMake、安装脚本或依赖下载。Python 运行环境为本机 Python 3.12 标准库，可在 ZIP 中携带纯 Python 模块。
+提交和参赛仅支持 C++17：`.cpp`、`.cc`、`.cxx` 或包含 C++ 源码的 ZIP，上传文件最多 5 MiB。ZIP 最多 64 个条目，解压后最多 20 MiB，拒绝路径穿越、符号链接、加密 ZIP 和 Python 源码/字节码（包括 C++ 与 Python 混合包）。C++ ZIP 可以包含头文件及最多 24 个 `.cpp/.cc/.cxx` 编译单元，后端统一使用 `g++ -std=c++17 -O2 -pipe` 编译；提供 `<nlohmann/json.hpp>`，不执行上传项目的 Makefile、CMake、安装脚本或依赖下载。
+
+历史用户 Python 版本的源码、轨迹和比赛记录保持可读，但不能提交私人测试、公开评测、重试历史任务或设为默认版本，也不再显示在公开排行榜中。已排队的旧 Python 任务会以不可重试的语言限制错误结束。`baseline` / `raider` 是两个不可变的平台内部 Python 基准，继续使用原有源码和哈希，保持当前赛季的评测口径；用户不能提交或覆盖它们。`lab/` 的本地规则测试工具仍可使用 Python 测试脚本。
 
 每个上传版本是不可覆盖的快照：
 
@@ -48,17 +50,17 @@ npm run dev
 users/<user-id>/bots/<bot-id>/
 ├── latest -> versions/<latest-version-id>
 └── versions/<version-id>/
-    ├── source.py / source.cpp / source.zip
+    ├── source.cpp / source.zip
     ├── build.json
     └── runtime/
-        └── bot.py / bot / 其他源码文件
+        └── bot / C++ 源码和头文件
 ```
 
 `latest` 便于本机定位。调度时以数据库中最新的已上传版本为准，并将其 id、版本号、源码 SHA-256 固定进比赛记录。测试进行中继续上传不会改变已提交的比赛。C++ 首次使用时编译，后续复用该版本的二进制和编译器记录。
 
-网页可以一键选择各 Bot 的最新版本。API 提交可以传 `bot_ids` 自动解析最新版本，或传 `version_ids` 明确选择历史版本。
+网页可以一键选择各 Bot 最新的可参赛未归档版本。API 提交可以传 `bot_ids` 使用可参赛的未归档默认版本，否则自动解析最新可参赛未归档版本；或传 `version_ids` 明确选择 C++ 历史版本。平台固定基准同样可以作为对手。
 
-改版使用 `halite3-lab-v1` JSON Lines 观测协议，动作仍是 H3 的文本命令。历史 H3 SDK 的文本观测解析器需要适配；原版语言支持不代表原版 SDK 可以不修改就读取迷雾协议。协议详见 [../lab/RULES.md](../lab/RULES.md)。下载示例：`/sample-python.zip`、`/sample-cpp.zip`，由 `npm run build` 自动生成。
+改版使用 `halite3-lab-v1` JSON Lines 观测协议，动作仍是 H3 的文本命令。历史 H3 SDK 的文本观测解析器需要适配。协议详见 [../lab/RULES.md](../lab/RULES.md)。C++ 示例下载：`/sample-cpp.zip`，由 `npm run build` 自动生成。旧的 Python 示例下载返回 404。
 
 ## 直接调用后端
 
@@ -67,7 +69,7 @@ users/<user-id>/bots/<bot-id>/
 ```bash
 python3 web/client.py login
 python3 web/client.py upload MyBot.cpp --name my-cpp --version 1.0 --trace session.jsonl --model claude-opus-5-5 --effort high --harness claude-code
-python3 web/client.py upload MyBot.zip --name my-python --version 1.1 --trace session.jsonl.gz
+python3 web/client.py upload MyBot.zip --name my-cpp --version 1.1 --trace session.jsonl.gz
 python3 web/client.py bots
 python3 web/client.py test --bots <my-bot-id>,builtin-baseline --modes 2 --seeds 11,29,47 --rotate
 python3 web/client.py status <job-id>

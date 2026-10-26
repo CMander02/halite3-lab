@@ -71,7 +71,7 @@ def main():
     commands.add_parser("login")
     commands.add_parser("bots")
     upload = commands.add_parser("upload")
-    upload.add_argument("file")
+    upload.add_argument("file", help="C++17 source (.cpp / .cc / .cxx) or a C++ ZIP project")
     upload.add_argument("--name", required=True)
     upload.add_argument("--version", required=True)
     upload.add_argument("--notes", default="")
@@ -109,6 +109,8 @@ def main():
     contest_status = commands.add_parser("contest-status", help="your submissions to a contest: progress and provisional ELO")
     contest_status.add_argument("contest")
     args = parser.parse_args()
+    if args.action == "upload" and Path(args.file).suffix.lower() not in (".cpp", ".cc", ".cxx", ".zip"):
+        parser.error("Bots must use C++17: upload .cpp, .cc, .cxx or a C++ ZIP project.")
     config = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
     origin = (
         args.origin or config.get("origin") or "https://halite3.cmander02.com"

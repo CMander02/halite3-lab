@@ -1051,9 +1051,7 @@ function ContestEditor({ contest, onDone }: { contest?: Contest; onDone: (id: st
               )}
               <div className="flex flex-col gap-2">
                 <Label>语言</Label>
-                {(["cpp", "python"] as const).map((l) => (
-                  <div key={l}>{check(form.languages.includes(l), () => set("languages", toggle(form.languages, l)), LANG[l], locked)}</div>
-                ))}
+                <p className="m-0 text-ink-2">C++17（全站只收 C++）</p>
               </div>
             </div>
           </div>

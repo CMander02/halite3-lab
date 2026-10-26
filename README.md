@@ -88,4 +88,4 @@
 
 已执行的测试、对照赛及其限制见 [lab/VALIDATION.md](lab/VALIDATION.md)。
 
-网页平台已扩展到 [web/](web/README.md)，支持账号隔离、Python/C++ 版本上传、原生进程测试、回放和固定基准 Tier List。
+网页平台已扩展到 [web/](web/README.md)，支持账号隔离、仅 C++17 版本上传与参赛、原生进程测试、回放和固定基准 Tier List。

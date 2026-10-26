@@ -19,6 +19,8 @@ import uuid
 from . import settings as S
 from .db import connect, initialize, now
 from .storage import disk_check
+from .eligibility import CPP_ONLY
+from .scheduler import match_eligible
 from . import analytics, contests
 from .builds import prepare, BotBuildError
 
@@ -124,6 +126,9 @@ def run_match(match):
         "stderr": "",
     }
     try:
+        with connect() as db:
+            if not match_eligible(db, match["seat_json"]):
+                raise BotBuildError(CPP_ONLY)
         commands = []
         for i, seat in enumerate(participants):
             directory, artifact = prepare(seat)

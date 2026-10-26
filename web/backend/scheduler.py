@@ -5,6 +5,26 @@ from fastapi import HTTPException
 from . import settings as S
 from .db import connect, now
 from .storage import disk_check
+from .eligibility import CPP_ONLY, eligible
+
+
+def require_eligible(versions):
+    if any(not eligible(v) for v in versions):
+        raise HTTPException(400, CPP_ONLY)
+
+
+def match_eligible(db, seat_json):
+    # Resolve old snapshots against version metadata, including snapshots which
+    # predate the language field. Never rewrite the immutable seats.
+    seats = json.loads(seat_json)
+    for seat in seats:
+        row = db.execute(
+            "SELECT v.*,b.builtin,b.owner_id FROM versions v JOIN bots b ON b.id=v.bot_id WHERE v.id=?",
+            (seat["id"],),
+        ).fetchone()
+        if not row or not eligible(row):
+            return False
+    return bool(seats)
 
 
 def version_info(db, version_id, user_id, owned=False):
@@ -75,6 +95,7 @@ def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=Fa
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         versions = [version_info(db, vid, user_id, owned=ranked) for vid in version_ids]
+        require_eligible(versions)
         if ranked:
             candidate = versions[0]
             prior = db.execute(
@@ -213,6 +234,10 @@ def job_dict(db, row):
         ).fetchall()
     )
     item["counts"] = counts
+    item["retryable"] = bool(counts.get("failed")) and all(
+        match_eligible(db, r["seat_json"])
+        for r in db.execute("SELECT seat_json FROM matches WHERE job_id=? AND status='failed'", (item["id"],))
+    )
     item["total"] = sum(counts.values())
     item["status"] = (
         "running"

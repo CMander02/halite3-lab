@@ -354,7 +354,7 @@ export default function Account({ user, onChange }: { user: User | null; onChang
 
           <Panel title="命令行">
             <pre className={cn("m-0 overflow-x-auto bg-ink p-3 text-paper")}>
-              {`python3 web/client.py login\npython3 web/client.py upload bot.py --name my-bot --version 1.0\npython3 web/client.py test --bots BOT_ID,builtin-baseline --modes 2`}
+              {`python3 web/client.py login\npython3 web/client.py upload bot.cpp --name my-bot --version 1.0 --trace session.jsonl\npython3 web/client.py test --bots BOT_ID,builtin-baseline --modes 2`}
             </pre>
             <a className="mt-2 inline-block text-blue" href="/api/docs">
               全部后端接口 &gt;

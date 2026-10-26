@@ -67,6 +67,7 @@ export interface Summary {
 export interface Version {
   id: string;
   language: "python" | "cpp";
+  eligible: boolean;
   version: string;
   sha256: string;
   filename: string;
@@ -135,6 +136,7 @@ export interface Job {
   name: string;
   kind: string;
   status: string;
+  retryable: boolean;
   created_at: number;
   total: number;
   counts: Record<string, number>;
@@ -270,6 +272,7 @@ export interface Submission {
   bot_name: string;
   version: string;
   language: string;
+  eligible: boolean;
   filename: string;
   size: number;
   sha256: string;

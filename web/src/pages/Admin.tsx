@@ -190,6 +190,7 @@ function SubmissionsTab({ catalog }: { catalog: AdminCatalog | null }) {
                         <UserAvatar id={s.author_id} name={s.author} size="sm" />
                         <span>
                           {s.bot_name} <span className="text-blue">v{s.version}</span>
+                          {!s.eligible && <span className="block text-warn">历史版本 · 不可参赛</span>}
                           <span className="block text-ink-3">
                             {s.author} · {date(s.created_at)}
                           </span>

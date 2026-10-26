@@ -5,6 +5,7 @@ import stat
 import zipfile
 from fastapi import HTTPException
 from . import settings as S
+from .eligibility import CPP_ONLY
 
 
 def disk_check():
@@ -12,17 +13,17 @@ def disk_check():
         raise HTTPException(507, "服务器可用空间不足，已暂停新上传和新测试。")
 
 
-def validate_archive(data, filename):
+def validate_archive(data, filename, *, allow_builtin_python=False):
     if len(data) > S.MAX_UPLOAD:
         raise ValueError("文件不能超过 5 MiB。")
-    if filename.lower().endswith(".py"):
+    if allow_builtin_python and filename.lower().endswith(".py"):
         data.decode("utf-8-sig")
         return "python"
     if filename.lower().endswith((".cpp", ".cc", ".cxx")):
         data.decode("utf-8-sig")
         return "cpp"
     if not filename.lower().endswith(".zip"):
-        raise ValueError("支持 Python、C++ 源码，或包含 bot.py / C++ 源码的 ZIP。")
+        raise ValueError(CPP_ONLY)
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         files = archive.infolist()
         if not files or len(files) > 64:
@@ -30,6 +31,7 @@ def validate_archive(data, filename):
         if sum(f.file_size for f in files) > S.MAX_UNPACKED:
             raise ValueError("ZIP 解压后不能超过 20 MiB。")
         seen = set()
+        source_files = []
         for item in files:
             path = PurePosixPath(item.filename)
             mode = item.external_attr >> 16
@@ -48,22 +50,28 @@ def validate_archive(data, filename):
             if item.flag_bits & 1:
                 raise ValueError("不支持加密 ZIP。")
             seen.add(path.as_posix())
+            if not item.is_dir():
+                source_files.append(path)
+        if not allow_builtin_python and any(
+            path.suffix.lower() in (".py", ".pyw", ".pyc", ".pyo")
+            for path in source_files
+        ):
+            raise ValueError("Bot ZIP 不能包含 Python 源码或字节码。" + CPP_ONLY)
         cpp = [
-            name
-            for name in seen
-            if PurePosixPath(name).suffix.lower() in (".cpp", ".cc", ".cxx")
+            path for path in source_files if path.suffix.lower() in (".cpp", ".cc", ".cxx")
         ]
-        if "bot.py" not in seen and not cpp:
-            raise ValueError("ZIP 必须包含根目录 bot.py，或 C++ 源码。")
+        python = allow_builtin_python and PurePosixPath("bot.py") in source_files
+        if not python and not cpp:
+            raise ValueError("ZIP 必须包含 C++ 源码文件（.cpp、.cc、.cxx）。")
         if len(cpp) > 24:
             raise ValueError("C++ 项目最多包含 24 个编译单元。")
         if archive.testzip() is not None:
             raise ValueError("ZIP 校验失败。")
-    return "python" if "bot.py" in seen else "cpp"
+    return "python" if python else "cpp"
 
 
-def extract(data, filename, destination):
-    kind = validate_archive(data, filename)
+def extract(data, filename, destination, *, allow_builtin_python=False):
+    kind = validate_archive(data, filename, allow_builtin_python=allow_builtin_python)
     destination.mkdir(parents=True, exist_ok=True)
     if not filename.lower().endswith(".zip"):
         (destination / ("bot.py" if kind == "python" else "main.cpp")).write_bytes(data)

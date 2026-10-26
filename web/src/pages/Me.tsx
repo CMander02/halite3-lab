@@ -75,11 +75,12 @@ function SubmissionCard({ item, busy, act }: { item: Submission; busy: boolean; 
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[24px] leading-[28px] text-blue">v{item.version}</span>
-            <Tag>{item.language === "cpp" ? "C++17" : "Python"}</Tag>
+            <Tag>{item.language === "cpp" ? "C++17" : "Python · 历史版本"}</Tag>
             {item.archived && <Tag>已归档</Tag>}
             {!item.listed && <Tag className="border-warn text-warn">不在排行榜显示</Tag>}
           </div>
           <p className="mt-1 mb-2 text-ink-2">{item.notes || "未填写版本说明"}</p>
+          {!item.eligible && <p className="text-warn">仅保留历史记录；请上传 C++17 版本参赛。</p>}
           <div className="text-ink-3">
             {date(item.created_at)} · {item.filename} · {(item.size / 1024).toFixed(1)} KiB
           </div>
@@ -127,14 +128,16 @@ function SubmissionCard({ item, busy, act }: { item: Submission; busy: boolean; 
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            {!r && !item.archived && (
+            {!r && !item.archived && item.eligible && (
               <Button size="sm" disabled={busy} onClick={() => act(`/versions/${item.id}/rank`, "POST", {})}>
                 <Trophy size={14} /> 参加评测
               </Button>
             )}
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => act(`/versions/${item.id}`, "PATCH", { listed: !item.listed })}>
-              {item.listed ? <EyeClosed size={14} /> : <Eye size={14} />} {item.listed ? "榜单隐藏" : "榜单显示"}
-            </Button>
+            {item.eligible && (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => act(`/versions/${item.id}`, "PATCH", { listed: !item.listed })}>
+                {item.listed ? <EyeClosed size={14} /> : <Eye size={14} />} {item.listed ? "榜单隐藏" : "榜单显示"}
+              </Button>
+            )}
             {r && (
               <Button variant="ghost" size="sm" asChild>
                 <a href={`/matches?version=${item.id}`}>
