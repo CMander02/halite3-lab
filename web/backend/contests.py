@@ -39,7 +39,7 @@ from .storage import disk_check
 router = APIRouter()
 
 MODES = (2, 4, 8)
-LANGUAGES = ("cpp", "python")
+LANGUAGES = ("cpp",)  # bots are C++17 only (eligibility.CPP_ONLY)
 # Bench seat rotations per mode: 1v1 swaps seats, 4p visits every seat, 8p two offsets.
 BENCH_ROTATIONS = {2: 2, 4: 4, 8: 2}
 # Fields that decide what a bench game is; frozen once submissions open so every
