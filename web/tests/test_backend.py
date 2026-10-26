@@ -627,6 +627,28 @@ class BackendTest(unittest.TestCase):
         contest = next(c for c in self.a.get("/api/contests").json()["contests"] if c["slug"] == "draft")
         self.assertEqual(self.a.delete(f"/api/admin/contests/{contest['id']}").status_code, 200)
 
+    def test_written_game_rules(self):
+        from backend import contest_docs as D
+        expected = {2: [(8, 16), (23, 16)], 4: [(14, 14), (33, 14), (14, 33), (33, 33)],
+                    8: [(4, 8), (11, 8), (4, 23), (11, 23), (27, 8), (20, 8), (27, 23), (20, 23)]}
+        for mode, spots in expected.items():
+            setup = S.MODE_SETUPS[mode]
+            self.assertEqual(D.factories(mode, setup["width"], setup["height"]), spots)
+            if S.ENGINE.is_file():
+                rendered = D.render_map(mode, 11, setup)
+                self.assertEqual([tuple(f) for f in rendered["factories"]], spots)
+        self.account(self.a, "alice")
+        text = self.a.get("/api/contests/test-0").json()["rules_text"]
+        for part in ["## 每回合的结算顺序", "P0 (8,16)、P1 (23,16)", "三艘船的例子：", "## 迷雾与观测", "## 违规与判负", "## 结束与名次"]:
+            self.assertIn(part, text)
+        self.assertNotIn("多船连撞", text)
+        # With a 4-player mode the pileup rule is scoped to it and the three-ship example to the others.
+        config = {"modes": [2, 4], "public_maps": {"2": [11], "4": [7]}, "hidden_maps": {}, "targets": [], "languages": ["cpp"],
+                  "max_submissions": 5, "setups": {str(m): S.MODE_SETUPS[m] for m in (2, 4)}}
+        text = D.rules_markdown({"number": 1, "title": "t", "visible_at": None, "open_at": 0, "close_at": 0, "rules": ""}, config)
+        self.assertIn("**多船连撞**（仅 4 人混战）", text)
+        self.assertIn("三艘船的例子（未开启多船连撞时）", text)
+
     def test_practice_contest_zero_absorbs_benchmark_runs(self):
         self.account(self.a, "alice")
         _, legacy = self.upload(self.a, name="legacy")
