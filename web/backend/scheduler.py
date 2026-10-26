@@ -121,6 +121,8 @@ def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=Fa
                 "modes": modes,
                 "seeds": seeds,
                 "rotate_seats": rotate,
+                # Per-mode overrides of the fields above, frozen into the job.
+                "setups": {str(mode): S.MODE_SETUPS[mode] for mode in modes},
             }
         count = len(configurations)
         if count > S.MAX_MATCHES_PER_JOB:

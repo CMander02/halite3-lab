@@ -24,6 +24,10 @@ struct Constants {
     dimension_type VISION_RADIUS = 4;
     unsigned long REEF_PERCENT = 0;
     bool LIGHT_SHIP_COLLISIONS = false;
+    // Collisions of at least this many ships wreck every ship in place; 0 disables.
+    unsigned long PILEUP_WRECK_SIZE = 0;
+    // Reefs follow the fractal generator's mirror symmetry instead of tile translation.
+    bool MIRROR_REEFS = false;
 
     bool STRICT_ERRORS = false;                 /**< Whether strict error checking mode is enabled. */
 

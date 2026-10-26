@@ -27,4 +27,12 @@ RULES = {
     "REEF_PERCENT": 12,
     "LIGHT_SHIP_COLLISIONS": True,
 }
+# Four-player games use a larger mirrored map and wreck every ship in 3+ ship pileups
+# (lab/config/rules-ffa4.json). Python bots on 48x48 need about 135 s in the sandbox.
+FFA4_RULES = {**RULES, "PILEUP_WRECK_SIZE": 3, "MIRROR_REEFS": True}
+MODE_SETUPS = {
+    2: {"width": 32, "height": 32, "turns": 200, "rules": RULES, "seconds": MAX_GAME_SECONDS},
+    4: {"width": 48, "height": 48, "turns": 300, "rules": FFA4_RULES, "seconds": 240},
+    8: {"width": 32, "height": 32, "turns": 200, "rules": RULES, "seconds": MAX_GAME_SECONDS},
+}
 SEASON = "h3-lab1-baseline-set1"

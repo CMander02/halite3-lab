@@ -108,6 +108,12 @@ def run_match(match):
     workspace.mkdir(parents=True, mode=0o700)
     participants = json.loads(match["seat_json"])
     configuration = json.loads(match["config_json"])
+    # Jobs created before per-mode setups keep their single map and time limit.
+    configuration = {
+        "seconds": S.MAX_GAME_SECONDS,
+        **configuration,
+        **configuration.get("setups", {}).get(str(match["mode"]), {}),
+    }
     names = units_for(match)
     process = None
     logs = {
@@ -129,7 +135,12 @@ def run_match(match):
             )
             launch.write_text(
                 json.dumps(
-                    {"unit": names[i], "source_dir": str(directory), "argv": argv}
+                    {
+                        "unit": names[i],
+                        "source_dir": str(directory),
+                        "argv": argv,
+                        "runtime": configuration["seconds"] + 5,
+                    }
                 )
             )
             commands.append(
@@ -165,14 +176,14 @@ def run_match(match):
             start_new_session=True,
             preexec_fn=engine_limits,
         )
-        deadline = time.monotonic() + S.MAX_GAME_SECONDS
+        deadline = time.monotonic() + configuration["seconds"]
         last_heartbeat = 0
         while True:
             if STOP or time.monotonic() > deadline:
                 raise RuntimeError(
                     "执行器停止，比赛等待重试。"
                     if STOP
-                    else f"整场比赛超过 {S.MAX_GAME_SECONDS} 秒。"
+                    else f"整场比赛超过 {configuration['seconds']} 秒。"
                 )
             try:
                 stdout, stderr = process.communicate(timeout=1)
