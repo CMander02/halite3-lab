@@ -566,6 +566,11 @@ class BackendTest(unittest.TestCase):
         self.assertTrue(all(g["public"] == 0 for g in games))
         self.assertTrue(all([seat["id"] for seat in json.loads(g["seat_json"])].count(v2) == 1 for g in games))
         self.assertEqual(self.b.get("/api/contests/cup-1").json()["status"], "closed")
+        # A restart discards the first schedule: its finished games no longer count.
+        self.finish_games("job_id=? AND mode=2", (job,), lambda ids: [2 if i == v2 else 1 for i in ids])
+        restarted = self.a.post(f"/api/admin/contests/{cid}/final")
+        self.assertEqual(restarted.status_code, 200, restarted.text)
+        job = restarted.json()["job_id"]
         self.finish_games("job_id=?", (job,), lambda ids: [ids.index(i) + 1 for i in ids])
         contests.tick()
         detail = self.b.get("/api/contests/cup-1").json()
@@ -577,7 +582,7 @@ class BackendTest(unittest.TestCase):
         self.assertEqual(row["rank"], 1)
         self.assertEqual(row["hidden"]["games"], 4 + 2)  # 1v1 seed 101 x 2 targets x 2 seats; 4p seed 202 x 2 rounds
         # Published: games are public and now count in the global ELO.
-        self.assertEqual(self.a.get("/api/matches").json()["total"], 24 + 16)
+        self.assertEqual(self.a.get("/api/matches").json()["total"], 24 + 16 + 16)  # bench + final + discarded first final
         ids = [e["version_id"] for e in self.a.get("/api/leaderboard/elo").json()["entries"]]
         self.assertIn(v2, ids)
         self.assertNotIn(v1, ids)  # cancelled bench, never played
