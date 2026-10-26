@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from . import settings as S
+from .eligibility import CPP_ONLY, eligible
 from .db import connect, initialize, now
 from . import admin, profiles, submissions
 from .security import (
@@ -42,7 +43,7 @@ from .storage import disk_check, validate_archive
 from .catalog import load as load_catalog
 from .submissions import prepare_trace
 import zipfile
-from .scheduler import create_job, get_match, job_dict, match_dict, version_info
+from .scheduler import create_job, get_match, job_dict, match_dict, match_eligible, version_info
 
 AUTH_LIMIT = threading.BoundedSemaphore(2)
 UPLOAD_SLOTS = asyncio.Semaphore(2)
@@ -148,7 +149,7 @@ def api_docs():
                     + "</td></tr>"
                 )
     content = (
-        """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Halite 3 API 文档</title><style>body{font:14px/1.8 system-ui,sans-serif;color:#243b46;background:#f7f8fa;margin:0;padding:24px}main{max-width:1060px;margin:auto}a{color:#087f65}h1{font-size:28px}.scroll{overflow:auto;background:white;border:1px solid #e2e8ed;border-radius:7px}table{border-collapse:collapse;width:100%;text-align:left;white-space:nowrap}th,td{padding:12px 16px;border-bottom:1px solid #edf1f4}code,pre{font:12px/1.8 monospace}pre{overflow:auto;padding:18px;background:#edf4f1;border-radius:6px}p{color:#6b7f88}</style><main><a href="/">← 返回 Halite 3 Arena</a><h1>后端 API</h1><p>使用网页账号或 API Token 管理自己的 Bot 与测试。源码、私人任务和日志按账号授权。写操作需要同源 Cookie 或 Bearer Token。</p><p><a href="/api/openapi.json">下载完整 OpenAPI JSON</a> · <a href="https://github.com/CMander02/halite3-lab/tree/main/web">CLI 与 Bot 协议说明</a></p><pre>python3 web/client.py login\npython3 web/client.py upload MyBot.cpp --name my-cpp --version 1.0 --trace session.jsonl --model claude-opus-5-5 --effort high --harness claude-code --rank\npython3 web/client.py test --bots BOT_ID,builtin-baseline --seeds 11,29,47</pre><div class="scroll"><table><thead><tr><th>方法</th><th>路径</th><th>操作</th></tr></thead><tbody>"""
+        """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Halite 3 API 文档</title><style>body{font:14px/1.8 system-ui,sans-serif;color:#243b46;background:#f7f8fa;margin:0;padding:24px}main{max-width:1060px;margin:auto}a{color:#087f65}h1{font-size:28px}.scroll{overflow:auto;background:white;border:1px solid #e2e8ed;border-radius:7px}table{border-collapse:collapse;width:100%;text-align:left;white-space:nowrap}th,td{padding:12px 16px;border-bottom:1px solid #edf1f4}code,pre{font:12px/1.8 monospace}pre{overflow:auto;padding:18px;background:#edf4f1;border-radius:6px}p{color:#6b7f88}</style><main><a href="/">← 返回 Halite 3 Arena</a><h1>后端 API</h1><p>仅支持提交 C++17 Bot（.cpp、.cc、.cxx 或 C++ ZIP）。使用网页账号或 API Token 管理自己的 Bot 与测试。源码、私人任务和日志按账号授权。写操作需要同源 Cookie 或 Bearer Token。</p><p><a href="/api/openapi.json">下载完整 OpenAPI JSON</a> · <a href="https://github.com/CMander02/halite3-lab/tree/main/web">CLI 与 Bot 协议说明</a></p><pre>python3 web/client.py login\npython3 web/client.py upload MyBot.cpp --name my-cpp --version 1.0 --trace session.jsonl --model claude-opus-5-5 --effort high --harness claude-code --rank\npython3 web/client.py test --bots BOT_ID,builtin-baseline --seeds 11,29,47</pre><div class="scroll"><table><thead><tr><th>方法</th><th>路径</th><th>操作</th></tr></thead><tbody>"""
         + "".join(rows)
         + """</tbody></table></div></main></html>"""
     )
@@ -338,6 +339,7 @@ def bots(request: Request):
             ]
             item["model"] = bot_model(item)
             for v in item["versions"]:
+                v["eligible"] = eligible({**v, "builtin": item["builtin"], "owner_id": row["owner_id"]})
                 del v["admin_model"], v["detection_json"]
             result.append(item)
     return {"bots": result}
@@ -372,7 +374,7 @@ def create_bot(payload: BotCreate, request: Request):
 async def upload_version(
     bot_id: str,
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile = File(..., description="C++17 源码（.cpp、.cc、.cxx）或 C++ ZIP 项目；不支持 Python。"),
     version: str = Form(...),
     notes: str = Form(""),
     trace: UploadFile | None = File(None),
@@ -436,19 +438,13 @@ async def store_version(bot_id, request, file, version, notes, trace=None, decla
             prepared = await run_in_threadpool(prepare_trace, trace_data, Path(trace.filename or "trace.jsonl").name)
         except (ValueError, OSError, zipfile.BadZipFile, EOFError) as exc:
             raise HTTPException(400, f"对话轨迹无法读取：{str(exc)[:160]}")
-    filename = Path(file.filename or "bot.py").name
+    filename = Path(file.filename or "").name
     try:
         language = await run_in_threadpool(validate_archive, bytes(data), filename)
     except Exception as exc:
         raise HTTPException(400, f"Bot 文件无效：{str(exc)[:180]}")
     vid = str(uuid.uuid4())
-    extension = (
-        ".zip"
-        if filename.lower().endswith(".zip")
-        else ".py"
-        if language == "python"
-        else ".cpp"
-    )
+    extension = ".zip" if filename.lower().endswith(".zip") else ".cpp"
     directory = S.DATA / "users" / user["id"] / "bots" / bot_id / "versions" / vid
     directory.mkdir(parents=True, mode=0o700)
     key = str((directory / ("source" + extension)).relative_to(S.DATA))
@@ -535,13 +531,13 @@ def new_test(payload: TestCreate, request: Request):
         version_ids = []
         with connect() as db:
             for bot_id in payload.bot_ids:
-                # The bot's default version if one is pinned, else its latest non-archived version.
+                # Use the default eligible version, else the latest eligible version.
                 row = db.execute(
-                    "SELECT v.id FROM versions v JOIN bots b ON b.id=v.bot_id WHERE b.id=? AND (b.owner_id=? OR b.builtin=1) AND v.archived=0 ORDER BY v.id=COALESCE(b.default_version_id,'') DESC,v.created_at DESC,v.rowid DESC LIMIT 1",
+                    "SELECT v.id FROM versions v JOIN bots b ON b.id=v.bot_id WHERE b.id=? AND (b.owner_id=? OR b.builtin=1) AND v.archived=0 AND (v.language='cpp' OR b.builtin=1) ORDER BY v.id=COALESCE(b.default_version_id,'') DESC,v.created_at DESC,v.rowid DESC LIMIT 1",
                     (bot_id, user["id"]),
                 ).fetchone()
                 if not row:
-                    raise HTTPException(404, "Bot 不存在、无版本或无权访问。")
+                    raise HTTPException(404, "Bot 不存在、没有可参赛的 C++ 版本或无权访问。")
                 version_ids.append(row["id"])
     jid = create_job(
         user["id"],
@@ -599,10 +595,16 @@ def job_detail(job_id: str, request: Request):
 def retry_job(job_id: str, request: Request):
     user = user_for(request)
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         if not db.execute(
             "SELECT 1 FROM jobs WHERE id=? AND owner_id=?", (job_id, user["id"])
         ).fetchone():
             raise HTTPException(404, "任务不存在或无权访问。")
+        if any(
+            not match_eligible(db, row["seat_json"])
+            for row in db.execute("SELECT seat_json FROM matches WHERE job_id=? AND status='failed'", (job_id,))
+        ):
+            raise HTTPException(400, CPP_ONLY)
         count = db.execute(
             "UPDATE matches SET status='queued',max_attempts=attempts+3,error=NULL WHERE job_id=? AND status='failed'",
             (job_id,),
@@ -714,7 +716,7 @@ def match_logs(match_id: str, request: Request):
 def leaderboard():
     with connect() as db:
         rows = db.execute(
-            "SELECT j.*,v.version,b.name AS bot_name,u.display_name AS author FROM jobs j JOIN versions v ON v.id=j.candidate_id JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=j.owner_id WHERE j.kind='ranked' ORDER BY j.created_at DESC"
+            "SELECT j.*,v.version,b.name AS bot_name,u.display_name AS author FROM jobs j JOIN versions v ON v.id=j.candidate_id JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=j.owner_id WHERE j.kind='ranked' AND v.language='cpp' ORDER BY j.created_at DESC"
         ).fetchall()
         result = []
         for row in rows:
@@ -775,10 +777,12 @@ if (DIST / "assets").exists():
 
 @app.get("/{path:path}", include_in_schema=False)
 def frontend(path: str):
+    if path == "sample-python.zip":
+        raise HTTPException(404, CPP_ONLY)
     if path.startswith("api/"):
         raise HTTPException(404, "接口不存在。")
     if (
-        path in ("favicon.svg", "sample-python.zip", "sample-cpp.zip")
+        path in ("favicon.svg", "sample-cpp.zip")
         and (DIST / path).is_file()
     ):
         return FileResponse(DIST / path)

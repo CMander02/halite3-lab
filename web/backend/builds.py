@@ -7,6 +7,7 @@ import subprocess
 import uuid
 from . import settings as S
 from .storage import extract
+from .eligibility import CPP_ONLY, eligible, trusted_builtin
 
 
 class BotBuildError(RuntimeError):
@@ -21,6 +22,8 @@ spec.loader.exec_module(sandbox)
 
 
 def prepare(seat):
+    if not eligible(seat):
+        raise BotBuildError(CPP_ONLY)
     directory = (
         (S.DATA / seat["object_key"]).parent
         if seat["owner_id"]
@@ -30,7 +33,7 @@ def prepare(seat):
     metadata = directory / "build.json"
     if metadata.exists() and cache.exists():
         info = json.loads(metadata.read_text())
-        if info["source_sha256"] == seat["sha256"]:
+        if info["source_sha256"] == seat["sha256"] and info["language"] == seat["language"]:
             return cache, info
     failure = directory / "build-error.json"
     if failure.exists():
@@ -43,7 +46,13 @@ def prepare(seat):
     directory.mkdir(parents=True, exist_ok=True)
     temporary = directory / f".build-{uuid.uuid4().hex}"
     try:
-        language = extract(payload, seat["filename"], temporary)
+        try:
+            language = extract(
+                payload, seat["filename"], temporary,
+                allow_builtin_python=trusted_builtin(seat),
+            )
+        except ValueError as exc:
+            raise BotBuildError(str(exc)) from exc
         info = {"language": language, "source_sha256": seat["sha256"]}
         if language == "cpp":
             temporary.chmod(0o700)
@@ -61,6 +70,8 @@ def prepare(seat):
                 "-fmax-errors=8",
                 "-o",
                 "/bot/bot",
+                "-x",
+                "c++",
                 *sources,
             ]
             unit = f"halite3-build-{uuid.uuid4().hex[:12]}"

@@ -17,7 +17,7 @@ const RULES = [
 ];
 
 const STEPS = [
-  { icon: Upload, title: "上传 Bot", text: "Python / C++ 单文件或 ZIP。每个版本不可覆盖，源码保持私有。", href: "/bots" },
+  { icon: Upload, title: "上传 Bot", text: "仅支持 C++17 单文件或 C++ ZIP。每个版本不可覆盖，源码保持私有。", href: "/bots" },
   { icon: Play, title: "提交测试", text: "1v1、4 人、8 人循环赛，座位轮换。离开网页也会继续执行。", href: "/tests" },
   { icon: Trophy, title: "回放与排名", text: "逐回合拖动回放；参加固定基准评测后进入公开 Tier 与子榜。", href: "/leaderboard" },
 ];
@@ -188,11 +188,6 @@ export default function Overview({ user }: { user: User | null }) {
             ))}
           </ol>
           <div className="mt-6 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href="/sample-python.zip">
-                <Download size={14} /> Python 示例
-              </a>
-            </Button>
             <Button variant="outline" size="sm" asChild>
               <a href="/sample-cpp.zip">
                 <Download size={14} /> C++ 示例

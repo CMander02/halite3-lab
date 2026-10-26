@@ -41,7 +41,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
   const [rotate, setRotate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const options = useMemo(() => bots.data?.bots.flatMap((b) => b.versions.map((v) => ({ ...v, bot_name: b.name, builtin: b.builtin }))) || [], [bots.data]);
+  const options = useMemo(() => bots.data?.bots.flatMap((b) => b.versions.filter((v) => v.eligible).map((v) => ({ ...v, bot_name: b.name, builtin: b.builtin }))) || [], [bots.data]);
   const seedList = seeds.split(/[,，\s]+/).filter(Boolean);
   const count = modes.reduce((sum, k) => sum + combinations(selected.length, k) * (rotate ? k : 1), 0) * seedList.length;
 
@@ -125,7 +125,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {Boolean(job.counts.failed) && (
+                  {job.retryable && (
                     <Button variant="outline" disabled={busy} onClick={() => void action("retry")}>
                       <Reload size={14} /> 重试失败场次
                     </Button>
@@ -137,6 +137,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
                   )}
                 </div>
               </div>
+              {Boolean(job.counts.failed) && !job.retryable && <p className="text-warn">历史任务含有不再支持的版本，无法重试。请上传 C++17 版本新建测试。</p>}
               <Progress job={job} />
             </section>
             <Panel title="比赛记录" action={<span className="text-ink-3">每 3 秒更新</span>} bodyClassName="p-0">
@@ -171,13 +172,13 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
             <div>
               <div className="mb-2 flex flex-wrap items-center gap-3">
                 <span>参赛版本</span>
-                <span className="text-ink-3">2–10 个；开始后固定版本</span>
+                <span className="text-ink-3">2–10 个；仅 C++17 与平台固定基准，开始后固定版本</span>
                 <Button
                   type="button"
                   variant="secondary"
                   size="xs"
                   onClick={() => {
-                    const latest = (bots.data?.bots || []).map((b) => b.versions[0]?.id).filter((id): id is string => Boolean(id));
+                    const latest = (bots.data?.bots || []).map((b) => b.versions.find((v) => v.eligible && !v.archived)?.id).filter((id): id is string => Boolean(id));
                     if (latest.length > 10) return setMessage("超过 10 个 Bot，请手动选择。");
                     setSelected(latest);
                   }}

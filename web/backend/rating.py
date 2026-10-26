@@ -134,7 +134,7 @@ def board(db, include_hidden=False):
         entries.append({
             "version_id": row["id"], "bot_id": row["bot_id"], "bot_name": row["bot_name"], "version": row["version"],
             "author": row["author"], "author_id": row["owner_id"], "username": row["username"], "builtin": int(builtin),
-            "listed": bool(row["listed"]) and not row["archived"],
+            "listed": bool(row["listed"]) and not row["archived"] and (builtin or row["language"] == "cpp"),
             "games": stats["games"], "wins": stats["wins"], "win_rate": stats["wins"] / stats["games"],
             "avg_rank": stats["rank_sum"] / stats["games"],
             "elo": round(stats["elo"], 1), "elo_sd": round(stats["elo_sd"], 1),
