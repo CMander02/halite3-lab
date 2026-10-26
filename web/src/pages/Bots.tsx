@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Plus, Upload, Download, Trophy, ChevronDown, Code, Shield, Command, MoreVertical, Flag, Archive, Edit, Script } from "@nsmr/pixelart-react";
+import { Plus, Upload, Download, Trophy, ChevronDown, Shield, Command, MoreVertical, Flag, Archive, Edit, Script } from "@nsmr/pixelart-react";
 import type { Bot, CatalogKind, User, Version } from "@/lib/types";
 import { api, date, useApi } from "@/lib/api";
 import { navigate } from "@/lib/router";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Empty, ErrorBox, Loading, PageHead, Tag } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
+import { BotIcon } from "@/components/BotIcon";
 import { CatalogChip, CatalogSelect, entry, useCatalog } from "@/components/ModelBadge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -148,14 +149,12 @@ export default function Bots({ user }: { user: User | null }) {
             const active = bot.versions.find((v) => !v.archived);
             const defaultId = bot.default_version_id || active?.id;
             return (
-              <section key={bot.id} className={cn("pixel-frame flex flex-col", bot.builtin ? "border-dashed" : "")}>
+              <section key={bot.id} className={cn("pixel-frame flex min-w-0 flex-col", bot.builtin ? "border-dashed" : "")}>
                 <header className="flex items-start gap-3 p-4">
                   {bot.builtin ? (
                     <UserAvatar size="lg" />
                   ) : (
-                    <span className="notch flex size-10 shrink-0 items-center justify-center bg-blue text-white">
-                      <Code size={20} />
-                    </span>
+                    <BotIcon id={bot.id} model={bot.model} catalog={catalog} />
                   )}
                   <div className="min-w-0 flex-1">
                     <h2 className="m-0 flex flex-wrap items-center gap-2 text-[24px] leading-[28px] font-normal">

@@ -90,6 +90,8 @@ export interface Bot {
   versions: Version[];
   created_at: number;
   default_version_id?: string | null;
+  /** Model behind the default version (admin > confident detection > declared), for the bot icon. */
+  model?: string | null;
 }
 export interface Seat {
   id: string;

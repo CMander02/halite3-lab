@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Empty, ErrorBox, Loading, PageHead, Panel, Stat, Tag, TierBadge } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
+import { BotIcon, submissionModel } from "@/components/BotIcon";
 import { CONFIDENCE, SOURCE, CatalogChip, correctionLabel, entry, useCatalog } from "@/components/ModelBadge";
 
 const KINDS: [CatalogKind, string][] = [
@@ -232,8 +233,11 @@ export default function Me({ user }: { user: User | null }) {
               <Panel
                 key={head.bot_id}
                 title={
-                  <span className="text-[16px]">
-                    {head.bot_name} <span className="text-ink-3">· {versions.length} 个版本</span>
+                  <span className="inline-flex items-center gap-3 align-middle text-[16px]">
+                    <BotIcon id={head.bot_id} model={submissionModel(versions)} catalog={catalog} className="size-8" />
+                    <span>
+                      {head.bot_name} <span className="text-ink-3">· {versions.length} 个版本</span>
+                    </span>
                   </span>
                 }
                 action={

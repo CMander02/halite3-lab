@@ -300,6 +300,22 @@ def revoke_token(token_id: str, request: Request):
     return {"ok": True}
 
 
+def bot_model(bot):
+    """Model behind a bot, for its icon: the default (else latest active) version's
+    admin-confirmed model, then a confident detection, then the declaration,
+    then any detection. None when nothing is known."""
+    versions = bot["versions"]
+    head = next((v for v in versions if v["id"] == bot.get("default_version_id")), None)
+    head = head or next((v for v in versions if not v["archived"]), None) or (versions[0] if versions else None)
+    if not head:
+        return None
+    detection = json.loads(head["detection_json"]) if head["detection_json"] else {}
+    detected = detection.get("model") if detection.get("model") != "unknown" else None
+    confident = detection.get("model_confidence") in ("medium", "high")
+    declared = head["declared_model"] if head["declared_model"] != "unknown" else None
+    return head["admin_model"] or (detected if confident else None) or declared or detected
+
+
 @app.get("/api/bots")
 def bots(request: Request):
     user = user_for(request, False)
@@ -316,10 +332,13 @@ def bots(request: Request):
             item["versions"] = [
                 dict(v)
                 for v in db.execute(
-                    "SELECT id,version,sha256,filename,size,notes,created_at,language,listed,archived,declared_model,declared_effort,declared_harness,trace_key IS NOT NULL AS has_trace FROM versions WHERE bot_id=? ORDER BY created_at DESC,rowid DESC",
+                    "SELECT id,version,sha256,filename,size,notes,created_at,language,listed,archived,declared_model,declared_effort,declared_harness,trace_key IS NOT NULL AS has_trace,admin_model,detection_json FROM versions WHERE bot_id=? ORDER BY created_at DESC,rowid DESC",
                     (item["id"],),
                 )
             ]
+            item["model"] = bot_model(item)
+            for v in item["versions"]:
+                del v["admin_model"], v["detection_json"]
             result.append(item)
     return {"bots": result}
 
