@@ -192,7 +192,7 @@ def bot_profile(bot_id: str, request: Request):
 
     The owner and the admin see every version; everyone else sees the versions that
     are on public record (listed and rated globally, or entered in a contest)."""
-    from .contests import compute, finalists, status as contest_status
+    from .contests import compute, current_entries, status as contest_status
 
     user = user_for(request, False)
     with connect() as db:
@@ -224,13 +224,13 @@ def bot_profile(bot_id: str, request: Request):
                     frozen = json.loads(contest["standings_json"]) if contest["standings_json"] else None
                     tables[e["contest_id"]] = (contest, frozen["bench"] if frozen else compute(db, contest, "bench"),
                                                frozen["final"] if frozen else None,
-                                               finalists(db, contest["id"]).get(e["user_id"]))
-                contest, bench, final, chosen = tables[e["contest_id"]]
+                                               current_entries(db, contest))
+                contest, bench, final, current = tables[e["contest_id"]]
                 pick = lambda table: next(({k: r[k] for k in ("elo", "adjusted_elo", "games", "win_rate", "rank")}
                                            for r in table.get("overall", []) if r["version_id"] == row["id"]), None)
                 contests.append({"contest_id": contest["id"], "slug": contest["slug"], "title": contest["title"],
                                  "status": contest_status(contest), "seq": e["seq"], "created_at": e["created_at"],
-                                 "current": bool(chosen and chosen["id"] == e["id"]),
+                                 "current": e["id"] in current,
                                  "bench": pick(bench), "final": pick(final) if final else None})
             attr = None if bot["builtin"] else attribution(row, catalog)
             versions.append({

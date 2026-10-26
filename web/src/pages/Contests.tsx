@@ -490,7 +490,7 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
       </div>
       <p className="m-0 max-w-[880px] text-ink-3">
         {c.practice
-          ? "排名来自每次提交与 baseline、raider 的 12 场对局，用 Bradley–Terry 拟合 ELO。每人以最后一次提交排名；靶子和历史提交不占名次。这些对局同时计入全局 ELO。"
+          ? "排名来自每次提交与 baseline、raider 的 12 场对局，用 Bradley–Terry 拟合 ELO。每个 Bot 以最新一次提交排名；靶子和历史提交不占名次。这些对局同时计入全局 ELO。"
           : stage === "bench"
           ? "临时排名只来自与靶子的对局：所有提交面对同一组靶子和公开地图，用 Bradley–Terry 拟合出可比的 ELO。每人以当前选定（默认最后一次）的提交排名；靶子和历史提交不占名次。"
           : "正式排名来自截止后的循环赛：每人的最终版本与其他选手和靶子在公开 + 隐藏地图上对战（1v1 双循环换座，多人局多轮随机分组）。"}
