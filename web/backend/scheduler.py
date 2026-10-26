@@ -173,6 +173,10 @@ def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=Fa
                     created,
                 ),
             )
+        if ranked:
+            from .contests import attach_ranked
+
+            attach_ranked(db)  # every benchmark run is a submission to contest #0
         return job_id
 
 

@@ -25,9 +25,10 @@ import random
 import re
 import uuid
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 from . import catalog as C
+from . import contest_docs as D
 from . import settings as S
 from .db import connect, now
 from .rating import attribution, fit_matches
@@ -45,6 +46,8 @@ BENCH_ROTATIONS = {2: 2, 4: 4, 8: 2}
 # submission is measured on the same yardstick.
 BENCH_FIELDS = ("modes", "public_maps", "targets", "languages", "bench_rotate")
 FINAL_FIELDS = ("hidden_maps", "final_rounds")
+# Job kinds per stage; contest #0's submissions are the legacy 'ranked' benchmark jobs.
+STAGE_KINDS = {"bench": ("contest-bench", "ranked"), "final": ("contest-final", "contest-final")}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS contests(
@@ -64,11 +67,68 @@ CREATE INDEX IF NOT EXISTS contest_entries_user ON contest_entries(contest_id,us
 """
 
 
+PRACTICE_SLUG = "test-0"
+FOREVER = 4102444800  # 2100-01-01: the practice contest never closes
+
+
 def migrate(db):
     db.executescript(SCHEMA)
     if "contest_id" not in {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}:
         db.execute("ALTER TABLE jobs ADD COLUMN contest_id TEXT")
     db.execute("CREATE INDEX IF NOT EXISTS jobs_contest ON jobs(contest_id,kind)")
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(contests)")}
+    for name, kind in [("number", "INTEGER"), ("prompt", "TEXT NOT NULL DEFAULT ''"), ("rules", "TEXT NOT NULL DEFAULT ''")]:
+        if name not in columns:
+            db.execute(f"ALTER TABLE contests ADD COLUMN {name} {kind}")
+    for row in db.execute("SELECT id FROM contests WHERE number IS NULL ORDER BY created_at").fetchall():
+        db.execute("UPDATE contests SET number=(SELECT COALESCE(MAX(number),0)+1 FROM contests) WHERE id=?", (row["id"],))
+    ensure_practice(db)
+    attach_ranked(db)
+
+
+def ensure_practice(db):
+    """Contest #0: the standing test contest. It is the fixed 12-game benchmark
+    (baseline + raider, 1v1, seeds 11 / 29 / 47, seats swapped) as a contest: no
+    deadline, no final round, games public at once and counted in the global ELO."""
+    if db.execute("SELECT 1 FROM contests WHERE number=0").fetchone():
+        return
+    first = db.execute("SELECT MIN(created_at) FROM jobs WHERE kind='ranked'").fetchone()[0] or now()
+    config = {
+        "modes": [2], "public_maps": {"2": [11, 29, 47]}, "hidden_maps": {"2": []},
+        "targets": ["builtin-baseline-v1", "builtin-raider-v1"], "base_version_id": "builtin-baseline-v1",
+        "downloads": ["builtin-baseline-v1", "builtin-raider-v1"], "languages": ["cpp"],
+        "max_submissions": 200, "bench_rotate": True, "final_rounds": 1, "auto_final": False, "practice": True,
+        "setups": {"2": S.MODE_SETUPS[2]},
+    }
+    db.execute(
+        """INSERT INTO contests(id,number,slug,title,summary,description,visible_at,open_at,close_at,published,config_json,created_at,updated_at)
+        VALUES(?,0,?,?,?,?,NULL,?,?,1,?,?,?)""",
+        (str(uuid.uuid4()), PRACTICE_SLUG, "测试比赛",
+         "常驻测试赛：随时提交，对阵 baseline 与 raider 各 6 场，成绩立即计入全局 ELO。",
+         "原来的“参评 / 12 场固定评测”就是这场比赛。之前所有参评过的版本都已按提交时间收进来。\n"
+         "这场比赛没有截止时间、没有隐藏地图和正式评测；对局立即公开，计入全局 ELO 和 Tier。",
+         first, FOREVER, json.dumps(config), now(), now()),
+    )
+
+
+def attach_ranked(db):
+    """File every 12-game benchmark job (kind='ranked') under contest #0 as a submission."""
+    contest = db.execute("SELECT id FROM contests WHERE number=0").fetchone()
+    if not contest:
+        return
+    jobs = db.execute(
+        "SELECT id,owner_id,candidate_id,created_at FROM jobs WHERE kind='ranked' AND contest_id IS NULL ORDER BY created_at,rowid"
+    ).fetchall()
+    for job in jobs:
+        db.execute("UPDATE jobs SET contest_id=? WHERE id=?", (contest["id"], job["id"]))
+        if db.execute("SELECT 1 FROM contest_entries WHERE contest_id=? AND version_id=?", (contest["id"], job["candidate_id"])).fetchone():
+            continue
+        seq = db.execute("SELECT COALESCE(MAX(seq),0)+1 FROM contest_entries WHERE contest_id=? AND user_id=?",
+                         (contest["id"], job["owner_id"])).fetchone()[0]
+        db.execute(
+            "INSERT INTO contest_entries(id,contest_id,user_id,version_id,seq,job_id,created_at) VALUES(?,?,?,?,?,?,?)",
+            (str(uuid.uuid4()), contest["id"], job["owner_id"], job["candidate_id"], seq, job["id"], job["created_at"]),
+        )
 
 
 # ---------------------------------------------------------------- lookups
@@ -267,8 +327,8 @@ def compute(db, contest, stage):
     # The final counts only the current final job: a restart discards the previous schedule.
     matches = db.execute(
         """SELECT m.mode,m.seed,m.seat_json,m.result_json FROM matches m JOIN jobs j ON j.id=m.job_id
-        WHERE j.contest_id=? AND j.kind=? AND (j.kind<>'contest-final' OR j.id=?) AND m.status='complete' AND m.result_json IS NOT NULL""",
-        (contest["id"], f"contest-{stage}", contest["final_job_id"]),
+        WHERE j.contest_id=? AND j.kind IN (?,?) AND (j.kind<>'contest-final' OR j.id=?) AND m.status='complete' AND m.result_json IS NOT NULL""",
+        (contest["id"], *STAGE_KINDS[stage], contest["final_job_id"]),
     ).fetchall()
     entries = {row["version_id"]: row for row in db.execute("SELECT * FROM contest_entries WHERE contest_id=?", (contest["id"],))}
     targets = set(config["targets"])
@@ -341,8 +401,8 @@ def compute(db, contest, stage):
 def stage_progress(db, contest, stage):
     counts = dict(db.execute(
         """SELECT m.status,COUNT(*) FROM matches m JOIN jobs j ON j.id=m.job_id
-        WHERE j.contest_id=? AND j.kind=? AND (j.kind<>'contest-final' OR j.id=?) GROUP BY m.status""",
-        (contest["id"], f"contest-{stage}", contest["final_job_id"]),
+        WHERE j.contest_id=? AND j.kind IN (?,?) AND (j.kind<>'contest-final' OR j.id=?) GROUP BY m.status""",
+        (contest["id"], *STAGE_KINDS[stage], contest["final_job_id"]),
     ).fetchall())
     return {"counts": counts, "total": sum(counts.values())}
 
@@ -358,7 +418,8 @@ def public_view(db, row, user, detail=False):
         "SELECT COUNT(DISTINCT user_id),COUNT(*) FROM contest_entries WHERE contest_id=?", (row["id"],)
     ).fetchone()
     item = {
-        "id": row["id"], "slug": row["slug"], "title": row["title"], "summary": row["summary"], "status": state,
+        "id": row["id"], "number": row["number"], "slug": row["slug"], "title": row["title"], "summary": row["summary"], "status": state,
+        "practice": bool(config.get("practice")),
         "visible_at": row["visible_at"], "open_at": row["open_at"], "close_at": row["close_at"],
         "published": bool(row["published"]), "final_started_at": row["final_started_at"], "finalized_at": row["finalized_at"],
         "modes": config["modes"], "participants": users, "submissions": entries,
@@ -381,6 +442,8 @@ def public_view(db, row, user, detail=False):
 
     item.update({
         "description": row["description"],
+        "rules_text": D.rules_markdown(row, config),
+        "prompt_text": D.prompt_markdown(row, config, S.ORIGIN),
         "maps": {
             str(mode): {
                 **{k: config["setups"][str(mode)][k] for k in ("width", "height", "turns", "seconds")},
@@ -401,6 +464,7 @@ def public_view(db, row, user, detail=False):
     })
     if admin:
         item["config"] = {k: v for k, v in config.items() if k != "setups"}
+        item["prompt"], item["rules"] = row["prompt"], row["rules"]
         # Games the final would queue right now (current finalists + targets).
         players = [{"id": f"f{i}"} for i in range(len(finalists(db, row["id"])))]
         ids = {p["id"] for p in players}
@@ -428,7 +492,7 @@ def entry_view(db, contest, entry, bench):
 def list_contests(request: Request):
     user = user_for(request, False)
     with connect() as db:
-        rows = db.execute("SELECT * FROM contests ORDER BY open_at DESC,created_at DESC").fetchall()
+        rows = db.execute("SELECT * FROM contests ORDER BY number DESC").fetchall()
         return {"contests": [public_view(db, row, user) for row in rows if visible(row, user)]}
 
 
@@ -481,33 +545,75 @@ class EntryCreate(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
-@router.post("/api/contests/{key}/entries", status_code=201)
-def submit(key: str, payload: EntryCreate, request: Request):
-    user = user_for(request)
-    rate_limit(request, "contest-submit", 30, 3600, user["id"])
+# Contest submissions are single, canonically named files.
+CANONICAL = {"cpp": "bot.cpp", "python": "bot.py"}
+LANGUAGE_NAMES = {"cpp": "C++17", "python": "Python"}
+
+
+def check_entry(db, row, user, version=None):
+    """Raise unless `user` may submit now (and, given a version row, submit that version).
+    Returns the user's submission count so far."""
+    config = json.loads(row["config_json"])
+    if status(row) != "open":
+        raise HTTPException(409, "比赛当前不在提交窗口内。")
+    count = db.execute("SELECT COUNT(*) FROM contest_entries WHERE contest_id=? AND user_id=?", (row["id"], user["id"])).fetchone()[0]
+    if count >= config["max_submissions"]:
+        raise HTTPException(409, f"每人最多提交 {config['max_submissions']} 次，已用完。")
+    if version is None:
+        return count
+    if not version or version["owner_id"] != user["id"]:
+        raise HTTPException(404, "Bot 版本不存在或无权访问。")
+    if version["archived"]:
+        raise HTTPException(400, "已归档的版本不能提交。")
+    if version["language"] not in config["languages"]:
+        names = " / ".join(LANGUAGE_NAMES[x] for x in config["languages"])
+        raise HTTPException(400, f"这场比赛只接受 {names}。")
+    if version["filename"] != CANONICAL[version["language"]]:
+        raise HTTPException(400, f"比赛只接受单文件 {CANONICAL[version['language']]}（这个版本上传的是 {version['filename']}）。")
+    if db.execute("SELECT 1 FROM contest_entries WHERE contest_id=? AND version_id=?", (row["id"], version["id"])).fetchone():
+        raise HTTPException(409, "这个版本已经提交过，请上传新版本后再提交。")
+    return count
+
+
+def owned(db, version_id):
+    return db.execute(
+        "SELECT v.*,b.name,b.owner_id,b.builtin,u.display_name AS author FROM versions v JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=b.owner_id WHERE v.id=?",
+        (version_id,),
+    ).fetchone()
+
+
+def contest_for_entry(user, key):
+    """The contest row, checked for an open window and remaining quota (before an upload)."""
+    with connect() as db:
+        row = load(db, key, user)
+        check_entry(db, row, user)
+        return row
+
+
+def enter(user, key, version_id, note=""):
+    """Submit one of the user's versions to a contest; returns the new entry."""
     disk_check()
+    with connect() as db:
+        row = load(db, key, user)
+        practice = json.loads(row["config_json"]).get("practice")
+        if practice:
+            check_entry(db, row, user, owned(db, version_id))
+    if practice:
+        # Contest #0 is the fixed public benchmark: the ranked job files itself under #0.
+        from .scheduler import create_job
+
+        job_id = create_job(user["id"], "排名评测", [version_id], [2], [11, 29, 47], True, True)
+        with connect() as db:
+            entry = db.execute("SELECT * FROM contest_entries WHERE contest_id=? AND version_id=?", (row["id"], version_id)).fetchone()
+            db.execute("UPDATE contest_entries SET note=? WHERE id=?", (note, entry["id"]))
+            games = db.execute("SELECT COUNT(*) FROM matches WHERE job_id=?", (job_id,)).fetchone()[0]
+        return {"id": entry["id"], "seq": entry["seq"], "job_id": job_id, "games": games, "version_id": version_id}
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = load(db, key, user)
-        if status(row) != "open":
-            raise HTTPException(409, "比赛当前不在提交窗口内。")
         config = json.loads(row["config_json"])
-        version = db.execute(
-            "SELECT v.*,b.name,b.owner_id,b.builtin,u.display_name AS author FROM versions v JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=b.owner_id WHERE v.id=? AND b.owner_id=?",
-            (payload.version_id, user["id"]),
-        ).fetchone()
-        if not version:
-            raise HTTPException(404, "Bot 版本不存在或无权访问。")
-        if version["archived"]:
-            raise HTTPException(400, "已归档的版本不能提交。")
-        if version["language"] not in config["languages"]:
-            names = " / ".join({"cpp": "C++17", "python": "Python"}[x] for x in config["languages"])
-            raise HTTPException(400, f"这场比赛只接受 {names} 版本。")
-        count = db.execute("SELECT COUNT(*) FROM contest_entries WHERE contest_id=? AND user_id=?", (row["id"], user["id"])).fetchone()[0]
-        if count >= config["max_submissions"]:
-            raise HTTPException(409, f"每人最多提交 {config['max_submissions']} 次，已用完。")
-        if db.execute("SELECT 1 FROM contest_entries WHERE contest_id=? AND version_id=?", (row["id"], version["id"])).fetchone():
-            raise HTTPException(409, "这个版本已经提交过，请上传新版本后再提交。")
+        version = owned(db, version_id)
+        count = check_entry(db, row, user, version)
         # A newer submission supersedes the queued bench games of the previous ones.
         db.execute(
             """UPDATE matches SET status='cancelled' WHERE status='queued' AND job_id IN
@@ -522,9 +628,17 @@ def submit(key: str, payload: EntryCreate, request: Request):
         entry_id = str(uuid.uuid4())
         db.execute(
             "INSERT INTO contest_entries(id,contest_id,user_id,version_id,seq,job_id,note,created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (entry_id, row["id"], user["id"], version["id"], seq, job_id, payload.note, now()),
+            (entry_id, row["id"], user["id"], version["id"], seq, job_id, note, now()),
         )
-    return {"id": entry_id, "seq": seq, "job_id": job_id, "games": len(games)}
+    return {"id": entry_id, "seq": seq, "job_id": job_id, "games": len(games), "version_id": version_id}
+
+
+@router.post("/api/contests/{key}/entries", status_code=201)
+def submit(key: str, payload: EntryCreate, request: Request):
+    """Submit an already uploaded version (see POST /api/contests/{key}/submit to upload bot.cpp directly)."""
+    user = user_for(request)
+    rate_limit(request, "contest-submit", 30, 3600, user["id"])
+    return enter(user, key, payload.version_id, payload.note)
 
 
 class Pick(BaseModel):
@@ -559,6 +673,28 @@ def download(key: str, version_id: str, request: Request):
     return FileResponse(S.DATA / version["object_key"], filename=name, media_type="application/octet-stream")
 
 
+@router.get("/api/contests/{key}/kit.zip")
+def problem_kit(key: str, request: Request):
+    """Problem kit: prompt, rules, protocol, public maps, reference bots, C++ starter and CLI."""
+    user = user_for(request, False)
+    with connect() as db:
+        row = load(db, key, user)
+        data = D.kit(db, row, json.loads(row["config_json"]), S.ORIGIN, version_rows)
+    return Response(data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="halite3-{row["slug"]}-kit.zip"'})
+
+
+@router.get("/api/contests/{key}/prompt.md")
+def problem_prompt(key: str, request: Request):
+    """PROMPT.md followed by RULES.md, as one text an agent can read."""
+    user = user_for(request, False)
+    with connect() as db:
+        row = load(db, key, user)
+    config = json.loads(row["config_json"])
+    return PlainTextResponse(D.prompt_markdown(row, config, S.ORIGIN) + "\n\n" + D.rules_markdown(row, config),
+                             media_type="text/markdown; charset=utf-8")
+
+
 @router.get("/api/contests/{key}/setup/{mode}")
 def local_setup(key: str, mode: int, request: Request, rules_only: bool = False):
     """Map size, turns and rules of one mode, for running the same games locally
@@ -584,6 +720,8 @@ class ContestIn(BaseModel):
     title: str = Field(min_length=1, max_length=80)
     summary: str = Field(default="", max_length=200)
     description: str = Field(default="", max_length=20000)
+    prompt: str = Field(default="", max_length=20000)
+    rules: str = Field(default="", max_length=20000)
     visible_at: int | None = None
     open_at: int
     close_at: int
@@ -594,7 +732,7 @@ class ContestIn(BaseModel):
     targets: list[str]
     base_version_id: str | None = None
     downloads: list[str] = []
-    languages: list[str] = list(LANGUAGES)
+    languages: list[str] = ["cpp"]
     max_submissions: int = Field(default=20, ge=1, le=200)
     bench_rotate: bool = True
     final_rounds: int = Field(default=4, ge=1, le=20)
@@ -663,10 +801,10 @@ def create_contest(payload: ContestIn, request: Request):
         contest_id = str(uuid.uuid4())
         try:
             db.execute(
-                """INSERT INTO contests(id,slug,title,summary,description,visible_at,open_at,close_at,published,config_json,created_at,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (contest_id, payload.slug, payload.title.strip(), payload.summary, payload.description, payload.visible_at,
-                 payload.open_at, payload.close_at, int(payload.published), json.dumps(config), now(), now()),
+                """INSERT INTO contests(id,number,slug,title,summary,description,prompt,rules,visible_at,open_at,close_at,published,config_json,created_at,updated_at)
+                VALUES(?,(SELECT COALESCE(MAX(number),0)+1 FROM contests),?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (contest_id, payload.slug, payload.title.strip(), payload.summary, payload.description, payload.prompt, payload.rules,
+                 payload.visible_at, payload.open_at, payload.close_at, int(payload.published), json.dumps(config), now(), now()),
             )
         except Exception as exc:
             if "UNIQUE" in str(exc):
@@ -686,6 +824,8 @@ def update_contest(contest_id: str, payload: ContestIn, request: Request):
             raise HTTPException(409, "比赛结果已公布，不能再修改。")
         old = json.loads(row["config_json"])
         config = validate(db, payload)
+        if old.get("practice"):
+            config["practice"], config["auto_final"] = True, False
         has_entries = db.execute("SELECT 1 FROM contest_entries WHERE contest_id=? LIMIT 1", (contest_id,)).fetchone()
         if has_entries or (row["published"] and now() >= row["open_at"]):
             changed = [k for k in BENCH_FIELDS if config[k] != old[k]]
@@ -696,10 +836,10 @@ def update_contest(contest_id: str, payload: ContestIn, request: Request):
             raise HTTPException(409, "正式评测已经开始，隐藏地图和分组轮数不能再改；可以先重新开始正式评测。")
         try:
             db.execute(
-                """UPDATE contests SET slug=?,title=?,summary=?,description=?,visible_at=?,open_at=?,close_at=?,published=?,config_json=?,updated_at=?
+                """UPDATE contests SET slug=?,title=?,summary=?,description=?,prompt=?,rules=?,visible_at=?,open_at=?,close_at=?,published=?,config_json=?,updated_at=?
                 WHERE id=?""",
-                (payload.slug, payload.title.strip(), payload.summary, payload.description, payload.visible_at, payload.open_at,
-                 payload.close_at, int(payload.published), json.dumps(config), now(), contest_id),
+                (payload.slug, payload.title.strip(), payload.summary, payload.description, payload.prompt, payload.rules, payload.visible_at,
+                 payload.open_at, payload.close_at, int(payload.published), json.dumps(config), now(), contest_id),
             )
         except Exception as exc:
             if "UNIQUE" in str(exc):

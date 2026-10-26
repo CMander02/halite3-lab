@@ -357,6 +357,9 @@ export interface Progress {
 }
 export interface ContestSummary {
   id: string;
+  number: number;
+  /** Contest #0: the standing test contest (no deadline, no final round). */
+  practice: boolean;
   slug: string;
   title: string;
   summary: string;
@@ -376,6 +379,13 @@ export interface ContestSummary {
 }
 export interface Contest extends ContestSummary {
   description: string;
+  /** Written rules generated from the frozen configuration plus the admin's extra rules (Markdown). */
+  rules_text: string;
+  /** The problem prompt handed to agents (Markdown). */
+  prompt_text: string;
+  /** Admin only: the raw prompt / extra rules fields. */
+  prompt?: string;
+  rules?: string;
   maps: Record<string, ContestMap>;
   targets: ContestBot[];
   base: ContestBot | null;

@@ -509,6 +509,59 @@ async def store_version(bot_id, request, file, version, notes, trace=None, decla
     }
 
 
+@app.post("/api/contests/{key}/submit", status_code=201)
+async def contest_upload(
+    key: str,
+    request: Request,
+    file: UploadFile = File(...),
+    trace: UploadFile | None = File(None),
+    bot: str = Form(""),
+    version: str = Form(""),
+    note: str = Form(""),
+    model: str = Form("unknown"),
+    effort: str = Form("unknown"),
+    harness: str = Form("unknown"),
+):
+    """Upload bot.cpp (and optionally the agent trace) and submit it to a contest in one step.
+
+    `bot` names the bot to iterate on (created on first use, default: the contest slug);
+    each call adds a new immutable version, numbered automatically unless `version` is given.
+    Works with the web session or an API token, so an agent can submit on its own."""
+    user = user_for(request)
+    rate_limit(request, "contest-submit", 30, 3600, user["id"])
+    row = await run_in_threadpool(contests.contest_for_entry, user, key)
+    allowed = json.loads(row["config_json"])["languages"]
+    filename = Path(file.filename or "").name
+    if filename not in [contests.CANONICAL[x] for x in allowed]:
+        raise HTTPException(400, "请上传规范命名的单文件 " + " 或 ".join(contests.CANONICAL[x] for x in allowed) + "。")
+    name = (bot.strip() or row["slug"])[:60]
+    if len(note) > 500:
+        raise HTTPException(400, "备注最多 500 字。")
+    with connect() as db:
+        found = db.execute("SELECT id FROM bots WHERE owner_id=? AND name=?", (user["id"], name)).fetchone()
+        if found:
+            bot_id = found["id"]
+        else:
+            if db.execute("SELECT COUNT(*) FROM bots WHERE owner_id=?", (user["id"],)).fetchone()[0] >= 30:
+                raise HTTPException(409, "每个用户最多创建 30 个 Bot。")
+            bot_id = str(uuid.uuid4())
+            db.execute("INSERT INTO bots(id,owner_id,name,description,created_at) VALUES(?,?,?,?,?)",
+                       (bot_id, user["id"], name, f"{row['title']} 参赛 bot", now()))
+        if not version:
+            taken = {r[0] for r in db.execute("SELECT version FROM versions WHERE bot_id=?", (bot_id,))}
+            number = len(taken) + 1
+            while str(number) in taken:
+                number += 1
+            version = str(number)
+    async with UPLOAD_SLOTS:
+        stored = await store_version(bot_id, request, file, version, note, trace, {"model": model, "effort": effort, "harness": harness})
+    try:
+        entry = await run_in_threadpool(contests.enter, user, key, stored["id"], note)
+    except HTTPException as exc:
+        raise HTTPException(exc.status_code, f"版本 {version} 已上传，但没有提交成功：{exc.detail}")
+    return {**entry, "bot_id": bot_id, "bot": name, "version": version}
+
+
 @app.get("/api/versions/{version_id}/source")
 def download_source(version_id: str, request: Request):
     user = user_for(request, False)

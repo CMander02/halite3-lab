@@ -106,6 +106,10 @@ python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
 - **本地测试**：概览页提供靶子 / 基础 bot 下载（`/api/contests/{slug}/downloads/{version_id}`）、每个模式的规则文件（`/api/contests/{slug}/setup/{mode}?rules_only=true`）和引擎命令。提交期的云端评测和本地测的是同一件事；只有云端能做的是正式评测：对手是其他选手的最终版本、隐藏地图、统一沙箱与时限、模型 / 推理强度修正。
 - 靶子、基础 bot 和下载只能选平台基准或管理员自己的版本。提交评测的对局属于选手（按用户轮转调度），正式评测属于管理员；比赛对局的回放不受 30 天私人回放清理影响。
 
+- **题目包与规则**：比赛页（不是首页）提供“下载题目包”（`GET /api/contests/{slug}/kit.zip`）：`PROMPT.md` 题目（管理员写的题目 prompt，留空用默认模板，自动附上提交方式）、`RULES.md` 文字规则、`PROTOCOL.md` 协议、`maps/`（公开地图的种子、规则文件，以及用引擎跑一回合渲染出的地形 / 矿量 / 出生点，缓存在数据目录 `contest-maps/`）、`bots/` 参考 bot 源码、`starter/bot.cpp` 和 `tools/client.py`。`GET /api/contests/{slug}/prompt.md` 是题目 + 规则的纯文本。文字规则由冻结的比赛配置生成（时间、提交要求、评测与 ELO、每个模式的地图和规则开关、运行限制），管理员的“补充规则”接在末尾，显示在比赛概览页最下面。
+- **提交 bot.cpp**：比赛只接受规范命名的单文件 `bot.cpp`（允许 Python 的比赛为 `bot.py`）。`POST /api/contests/{slug}/submit`（multipart：`file`、可选 `trace`、`bot`、`version`、`note`、`model` / `effort` / `harness`）一步完成上传和提交：`bot` 同名就是在同一个 Bot 上迭代，首次使用自动创建，版本号自动递增。网页手动上传不需要 API Token；要让 Agent 在会话里自己提交或反复迭代，给它一个 API Token，用 `client.py contest-submit / contest-status / kit`。Agent 轨迹现在是可选的（`HALITE_REQUIRE_TRACE=1` 可恢复强制）。
+- **#0 测试比赛**（`test-0`）：常驻、不截止、没有正式评测。它就是原来的 12 场固定评测：启动迁移把所有历史“参评”任务按时间收为 #0 的提交，之后每次参评（Bots 页的按钮、上传时勾选、或在 #0 提交 bot.cpp）都会自动记入 #0，对局立即公开并计入全局 ELO 和 Tier。
+
 主要接口：`GET /api/contests`、`GET /api/contests/{slug}`、`GET /api/contests/{slug}/standings?stage=bench|final`、`GET/POST /api/contests/{slug}/entries`、`PUT /api/contests/{slug}/pick`；管理：`POST/PUT/DELETE /api/admin/contests[/{id}]`、`POST /api/admin/contests/{id}/final|finalize|retry`、`GET /api/admin/contest-options`。
 
 **Bot 页面**（`/bots/{id}`，`GET /api/bots/{id}/profile`）：Bot 的全部版本按时间排列，显示全局原始 / 修正后 ELO、总榜名次、Tier、每个版本参加过的比赛（临时 ELO 或正式名次），以及版本迭代的 ELO 折线。作者和管理员看到全部版本；其他人只看到已上榜或参加过比赛的版本。
