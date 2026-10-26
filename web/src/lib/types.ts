@@ -197,6 +197,7 @@ export interface Replay {
     VISION_RADIUS: number;
     FOG_ENABLED: boolean;
     LIGHT_SHIP_COLLISIONS: boolean;
+    PILEUP_WRECK_SIZE?: number;
     MAX_ENERGY: number;
   };
   map_generator_seed: number;
@@ -317,4 +318,170 @@ export interface AdminUser {
   last_login: number | null;
   sessions: number;
   tokens: number;
+}
+export type ContestStatus = "draft" | "upcoming" | "open" | "closed" | "finished";
+export interface ContestBot {
+  version_id: string;
+  bot_name: string;
+  version: string;
+  language: string;
+  author: string | null;
+  builtin: boolean;
+  downloadable: boolean;
+  notes: string;
+}
+export interface ContestMap {
+  width: number;
+  height: number;
+  turns: number;
+  seconds: number;
+  rules: Record<string, number | boolean>;
+  public: number[];
+  /** Seeds are revealed to players once the results are published. */
+  hidden: number[] | null;
+  hidden_count: number;
+}
+export interface ContestConfig {
+  modes: number[];
+  public_maps: Record<string, number[]>;
+  hidden_maps: Record<string, number[]>;
+  targets: string[];
+  base_version_id: string | null;
+  downloads: string[];
+  languages: string[];
+  max_submissions: number;
+  bench_rotate: boolean;
+  final_rounds: number;
+  auto_final: boolean;
+}
+export interface Progress {
+  counts: Record<string, number>;
+  total: number;
+}
+export interface ContestSummary {
+  id: string;
+  number: number;
+  /** Contest #0: the standing test contest (no deadline, no final round). */
+  practice: boolean;
+  slug: string;
+  title: string;
+  summary: string;
+  status: ContestStatus;
+  visible_at: number | null;
+  open_at: number;
+  close_at: number;
+  published: boolean;
+  final_started_at: number | null;
+  finalized_at: number | null;
+  modes: number[];
+  participants: number;
+  submissions: number;
+  max_submissions: number;
+  languages: string[];
+  my_submissions?: number;
+}
+export interface Contest extends ContestSummary {
+  description: string;
+  /** Written rules generated from the frozen configuration plus the admin's extra rules (Markdown). */
+  rules_text: string;
+  /** The problem prompt handed to agents (Markdown). */
+  prompt_text: string;
+  /** Admin only: the raw prompt / extra rules fields. */
+  prompt?: string;
+  rules?: string;
+  maps: Record<string, ContestMap>;
+  targets: ContestBot[];
+  base: ContestBot | null;
+  downloads: ContestBot[];
+  bench_rotate: boolean;
+  final_rounds: number;
+  auto_final: boolean;
+  bench_games: number;
+  progress: { bench: Progress; final: Progress };
+  config?: ContestConfig;
+  final_games_estimate?: number;
+}
+export interface StandingRow {
+  version_id: string;
+  bot_id: string;
+  bot_name: string;
+  version: string;
+  language: string;
+  target: boolean;
+  entry_id: string | null;
+  seq: number | null;
+  user_id: string | null;
+  author: string | null;
+  current: boolean;
+  rank: number | null;
+  games: number;
+  wins: number;
+  win_rate: number;
+  avg_rank: number;
+  mean_score: number;
+  elo: number;
+  elo_sd: number;
+  correction: number;
+  adjusted_elo: number;
+  attribution: EloEntry["attribution"];
+  versus: Record<string, { score: number; games: number }>;
+  hidden: { wins: number; games: number } | null;
+}
+export type Standings = Record<string, StandingRow[]>;
+export interface ContestEntry {
+  id: string;
+  seq: number;
+  version_id: string;
+  bot_id: string;
+  bot_name: string;
+  version: string;
+  language: string;
+  note: string;
+  picked: boolean;
+  current: boolean;
+  created_at: number;
+  job_id: string | null;
+  counts: Record<string, number>;
+  total: number;
+  stats: Record<string, StandingRow | null>;
+  final?: Record<string, StandingRow | null>;
+}
+export interface BotProfileVersion {
+  id: string;
+  version: string;
+  language: string;
+  notes: string;
+  created_at: number;
+  archived: boolean;
+  listed: boolean;
+  is_default: boolean;
+  attribution: EloEntry["attribution"];
+  ranked: RankedStatus | null;
+  elo: (EloStats & { avg_rank: number }) | null;
+  contests: {
+    contest_id: string;
+    slug: string;
+    title: string;
+    status: ContestStatus;
+    seq: number;
+    created_at: number;
+    current: boolean;
+    bench: { elo: number; adjusted_elo: number; games: number; win_rate: number; rank: number | null } | null;
+    final: { elo: number; adjusted_elo: number; games: number; win_rate: number; rank: number | null } | null;
+  }[];
+}
+export interface BotProfile {
+  bot: {
+    id: string;
+    name: string;
+    description: string;
+    builtin: boolean;
+    author: string | null;
+    author_id: string | null;
+    username: string | null;
+    created_at: number;
+    owned: boolean;
+    default_version_id: string | null;
+  };
+  versions: BotProfileVersion[];
 }

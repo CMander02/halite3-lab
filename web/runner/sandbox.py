@@ -7,7 +7,7 @@ import sys
 BWRAP = os.environ.get("HALITE_BWRAP", "/usr/local/lib/halite3/bwrap")
 
 
-def command(directory, argv, unit, compile=False):
+def command(directory, argv, unit, compile=False, runtime=105):
     budget = (
         [
             "-p",
@@ -32,7 +32,7 @@ def command(directory, argv, unit, compile=False):
             "-p",
             "TasksMax=32",
             "-p",
-            "RuntimeMaxSec=105",
+            f"RuntimeMaxSec={int(runtime)}",
         ]
     )
     return [
@@ -98,5 +98,7 @@ if __name__ == "__main__":
     import json
 
     config = json.loads(Path(sys.argv[1]).read_text())
-    cmd = command(config["source_dir"], config["argv"], config["unit"])
+    cmd = command(
+        config["source_dir"], config["argv"], config["unit"], runtime=config.get("runtime", 105)
+    )
     os.execvp(cmd[0], cmd)

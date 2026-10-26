@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Upload versions and schedule Halite 3 tests directly through the backend."""
+"""Upload versions, submit to contests and schedule Halite 3 tests directly through the backend.
+
+Agents: set HALITE_TOKEN (create one under 账号与头像) instead of running `login`."""
 
 import argparse, getpass, json, os, secrets, urllib.request, urllib.error
 from pathlib import Path
@@ -16,6 +18,7 @@ def request(
     raw=None,
     content_type=None,
     cookie=None,
+    binary=False,
 ):
     # Cloudflare rejects the default Python-urllib signature.
     headers = {"Origin": origin, "Accept": "application/json", "User-Agent": "halite3-cli/1.1 (+https://github.com/CMander02/halite3-lab)"}
@@ -35,9 +38,30 @@ def request(
             ),
             timeout=60,
         ) as response:
-            return json.load(response), response.headers
+            return (response.read() if binary else json.load(response)), response.headers
     except urllib.error.HTTPError as exc:
         raise SystemExit(str(json.load(exc).get("detail", str(exc))))
+
+
+def multipart(fields, files):
+    """(body, content type) for form fields and (field, path) file parts."""
+    boundary = "halite3-" + secrets.token_hex(16)
+    parts = []
+    for key, value in fields:
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+    for field, path in files:
+        content = path.read_bytes()
+        limit = 16 * 1024**2 if field == "trace" else 5 * 1024**2
+        if len(content) > limit:
+            raise SystemExit(f"{path}: over the {limit // 1024**2} MiB limit" + (" (gzip it first)" if field == "trace" else ""))
+        filename = path.name.replace('"', "").replace("\r", "").replace("\n", "")
+        parts += [
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode(),
+            content,
+            b"\r\n",
+        ]
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), "multipart/form-data; boundary=" + boundary
 
 
 def main():
@@ -51,7 +75,7 @@ def main():
     upload.add_argument("--name", required=True)
     upload.add_argument("--version", required=True)
     upload.add_argument("--notes", default="")
-    upload.add_argument("--trace", required=True, help="conversation trace that produced this version (JSONL / JSON / text, .gz ok)")
+    upload.add_argument("--trace", help="optional agent trace that produced this version (JSONL / JSON / text, .gz ok)")
     upload.add_argument("--model", default="unknown", help="catalog id, see `catalog`")
     upload.add_argument("--effort", default="unknown")
     upload.add_argument("--harness", default="unknown")
@@ -68,6 +92,22 @@ def main():
     status.add_argument("job", nargs="?")
     rank = commands.add_parser("rank")
     rank.add_argument("version_id")
+    commands.add_parser("contests")
+    kit = commands.add_parser("kit", help="download a contest's problem kit (prompt, rules, maps, reference bots)")
+    kit.add_argument("contest")
+    kit.add_argument("-o", "--output")
+    submit = commands.add_parser("contest-submit", help="upload bot.cpp and submit it to a contest")
+    submit.add_argument("contest")
+    submit.add_argument("file", help="must be named bot.cpp")
+    submit.add_argument("--bot", default="", help="bot to iterate on (created on first use; default: the contest slug)")
+    submit.add_argument("--version", default="", help="default: next number")
+    submit.add_argument("--note", default="")
+    submit.add_argument("--trace", help="optional agent trace (Claude Code / Codex session JSONL, .gz ok)")
+    submit.add_argument("--model", default="unknown", help="catalog id, see `catalog`")
+    submit.add_argument("--effort", default="unknown")
+    submit.add_argument("--harness", default="unknown")
+    contest_status = commands.add_parser("contest-status", help="your submissions to a contest: progress and provisional ELO")
+    contest_status.add_argument("contest")
     args = parser.parse_args()
     if args.action == "upload" and Path(args.file).suffix.lower() not in (".cpp", ".cc", ".cxx", ".zip"):
         parser.error("Bots must use C++17: upload .cpp, .cc, .cxx or a C++ ZIP project.")
@@ -99,8 +139,40 @@ def main():
         print("Logged in. Token saved with permissions 0600; expires in 30 days.")
         return
     token = os.environ.get("HALITE_TOKEN") or config.get("token")
+    if args.action == "contests":
+        result, _ = request(origin, "/contests", token)
+        result = [{k: c[k] for k in ("number", "slug", "title", "status", "open_at", "close_at", "modes")} for c in result["contests"]]
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.action == "kit":
+        data, _ = request(origin, f"/contests/{args.contest}/kit.zip", token, binary=True)
+        output = Path(args.output or f"halite3-{args.contest}-kit.zip")
+        output.write_bytes(data)
+        print(f"Saved {output} ({len(data)} bytes). Unzip it and start from PROMPT.md.")
+        return
     if not token:
         raise SystemExit("Run login first or set HALITE_TOKEN.")
+    if args.action == "contest-submit":
+        file = Path(args.file)
+        if file.name not in ("bot.cpp", "bot.py"):
+            raise SystemExit("Contest submissions must be a single file named bot.cpp.")
+        body, content_type = multipart(
+            [("bot", args.bot), ("version", args.version), ("note", args.note), ("model", args.model),
+             ("effort", args.effort), ("harness", args.harness)],
+            [("file", file)] + ([("trace", Path(args.trace))] if args.trace else []),
+        )
+        result, _ = request(origin, f"/contests/{args.contest}/submit", token, method="POST", raw=body, content_type=content_type)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.action == "contest-status":
+        result, _ = request(origin, f"/contests/{args.contest}/entries", token)
+        result = [{"seq": e["seq"], "bot": e["bot_name"], "version": e["version"], "current": e["current"],
+                   "complete": e["counts"].get("complete", 0), "total": e["total"], "failed": e["counts"].get("failed", 0),
+                   "elo": {mode: s and {"adjusted": s["adjusted_elo"], "raw": s["elo"], "win_rate": round(s["win_rate"], 3), "games": s["games"]}
+                           for mode, s in e["stats"].items()}}
+                  for e in result["entries"]]
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
     if args.action == "bots":
         result, _ = request(origin, "/bots", token)
     elif args.action == "catalog":
@@ -136,14 +208,6 @@ def main():
             method="POST",
         )
     else:
-        file = Path(args.file)
-        data = file.read_bytes()
-        if len(data) > 5 * 1024**2:
-            raise SystemExit("Upload limit: 5 MiB.")
-        trace = Path(args.trace)
-        trace_data = trace.read_bytes()
-        if len(trace_data) > 16 * 1024**2:
-            raise SystemExit("Trace limit: 16 MiB (gzip it first).")
         bots, _ = request(origin, "/bots", token)
         bot = next(
             (b for b in bots["bots"] if b["owned"] and b["name"] == args.name), None
@@ -152,29 +216,18 @@ def main():
             bot, _ = request(
                 origin, "/bots", token, payload={"name": args.name}, method="POST"
             )
-        boundary = "halite3-" + secrets.token_hex(16)
-        parts = []
-        fields = [("version", args.version), ("notes", args.notes), ("model", args.model),
-                  ("effort", args.effort), ("harness", args.harness), ("rank", "true" if args.rank else "false")]
-        for key, value in fields:
-            parts.append(
-                f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
-            )
-        for field, path, content in [("file", file, data), ("trace", trace, trace_data)]:
-            filename = path.name.replace('"', "").replace("\r", "").replace("\n", "")
-            parts += [
-                f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; filename="{filename}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode(),
-                content,
-                b"\r\n",
-            ]
-        parts.append(f"--{boundary}--\r\n".encode())
+        body, content_type = multipart(
+            [("version", args.version), ("notes", args.notes), ("model", args.model),
+             ("effort", args.effort), ("harness", args.harness), ("rank", "true" if args.rank else "false")],
+            [("file", Path(args.file))] + ([("trace", Path(args.trace))] if args.trace else []),
+        )
         result, _ = request(
             origin,
             f"/bots/{bot['id']}/versions",
             token,
             method="POST",
-            raw=b"".join(parts),
-            content_type="multipart/form-data; boundary=" + boundary,
+            raw=body,
+            content_type=content_type,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

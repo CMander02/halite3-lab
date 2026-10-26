@@ -178,7 +178,7 @@ function EloBoard({ entries }: { entries: EloEntry[] }) {
           <tr key={e.version_id} className={e.builtin ? "bg-paper" : ""}>
             <td className={cn("num", e.rank && e.rank <= 3 ? "text-blue" : "text-ink-3")}>{e.rank ? String(e.rank).padStart(2, "0") : "基准"}</td>
             <td className="max-w-[220px]">
-              <a href={`/matches?version=${e.version_id}`} className="block hover:text-blue">
+              <a href={`/bots/${e.bot_id}`} className="block hover:text-blue">
                 <Who e={e} />
               </a>
             </td>

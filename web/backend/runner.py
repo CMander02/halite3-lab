@@ -21,7 +21,7 @@ from .db import connect, initialize, now
 from .storage import disk_check
 from .eligibility import CPP_ONLY
 from .scheduler import match_eligible
-from . import analytics
+from . import analytics, contests
 from .builds import prepare, BotBuildError
 
 log = logging.getLogger("halite3.runner")
@@ -110,6 +110,12 @@ def run_match(match):
     workspace.mkdir(parents=True, mode=0o700)
     participants = json.loads(match["seat_json"])
     configuration = json.loads(match["config_json"])
+    # Jobs created before per-mode setups keep their single map and time limit.
+    configuration = {
+        "seconds": S.MAX_GAME_SECONDS,
+        **configuration,
+        **configuration.get("setups", {}).get(str(match["mode"]), {}),
+    }
     names = units_for(match)
     process = None
     logs = {
@@ -134,7 +140,12 @@ def run_match(match):
             )
             launch.write_text(
                 json.dumps(
-                    {"unit": names[i], "source_dir": str(directory), "argv": argv}
+                    {
+                        "unit": names[i],
+                        "source_dir": str(directory),
+                        "argv": argv,
+                        "runtime": configuration["seconds"] + 5,
+                    }
                 )
             )
             commands.append(
@@ -170,14 +181,14 @@ def run_match(match):
             start_new_session=True,
             preexec_fn=engine_limits,
         )
-        deadline = time.monotonic() + S.MAX_GAME_SECONDS
+        deadline = time.monotonic() + configuration["seconds"]
         last_heartbeat = 0
         while True:
             if STOP or time.monotonic() > deadline:
                 raise RuntimeError(
                     "执行器停止，比赛等待重试。"
                     if STOP
-                    else f"整场比赛超过 {S.MAX_GAME_SECONDS} 秒。"
+                    else f"整场比赛超过 {configuration['seconds']} 秒。"
                 )
             try:
                 stdout, stderr = process.communicate(timeout=1)
@@ -329,7 +340,8 @@ def cleanup():
         db.execute("DELETE FROM api_tokens WHERE expires_at<?", (now(),))
         db.execute("DELETE FROM rate_limits WHERE reset_at<?", (now(),))
         rows = db.execute(
-            "SELECT id,replay_key FROM matches WHERE finished_at<? AND replay_key IS NOT NULL AND public=0",
+            # Contest replays stay private until the results are published, then become public; keep them.
+            "SELECT id,replay_key FROM matches WHERE finished_at<? AND replay_key IS NOT NULL AND public=0 AND job_id NOT IN (SELECT id FROM jobs WHERE contest_id IS NOT NULL)",
             (cutoff,),
         ).fetchall()
         for row in rows:
@@ -365,13 +377,16 @@ def main():
             stderr=subprocess.DEVNULL,
             timeout=20,
         )
-        last_cleanup = 0
+        last_cleanup = last_tick = 0
         while not STOP:
             try:
                 heartbeat()
                 if now() - last_cleanup > 3600:
                     cleanup()
                     last_cleanup = now()
+                if now() - last_tick >= 15:
+                    contests.tick()
+                    last_tick = now()
                 disk_check()
                 match = claim()
                 if match:

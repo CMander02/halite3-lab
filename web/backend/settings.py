@@ -10,7 +10,8 @@ BWRAP = os.environ.get("HALITE_BWRAP", "/usr/local/lib/halite3/bwrap")
 CXX = os.environ.get("HALITE_CXX", "/usr/bin/g++")
 MAX_UPLOAD = 5 * 1024 * 1024
 MAX_TRACE = 16 * 1024 * 1024
-REQUIRE_TRACE = os.environ.get("HALITE_REQUIRE_TRACE", "1") != "0"
+# The agent trace is optional: it only pins down the model / effort behind a version.
+REQUIRE_TRACE = os.environ.get("HALITE_REQUIRE_TRACE", "0") == "1"
 ADMIN_USERNAME = os.environ.get("HALITE_ADMIN", "cmander").lower()
 MAX_UNPACKED = 20 * 1024 * 1024
 MAX_USER_UPLOAD = 256 * 1024 * 1024
@@ -26,5 +27,13 @@ RULES = {
     "VISION_RADIUS": 4,
     "REEF_PERCENT": 12,
     "LIGHT_SHIP_COLLISIONS": True,
+}
+# Four-player games use a larger mirrored map and wreck every ship in 3+ ship pileups
+# (lab/config/rules-ffa4.json). Python bots on 48x48 need about 135 s in the sandbox.
+FFA4_RULES = {**RULES, "PILEUP_WRECK_SIZE": 3, "MIRROR_REEFS": True}
+MODE_SETUPS = {
+    2: {"width": 32, "height": 32, "turns": 200, "rules": RULES, "seconds": MAX_GAME_SECONDS},
+    4: {"width": 48, "height": 48, "turns": 300, "rules": FFA4_RULES, "seconds": 240},
+    8: {"width": 32, "height": 32, "turns": 200, "rules": RULES, "seconds": MAX_GAME_SECONDS},
 }
 SEASON = "h3-lab1-baseline-set1"
