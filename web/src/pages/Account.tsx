@@ -14,6 +14,53 @@ import { cn } from "@/lib/utils";
 
 const OUT = 128;
 
+function PasswordPanel() {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [done, setDone] = useState(false);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setMessage("");
+    setDone(false);
+    if (data.get("new_password") !== data.get("confirm")) return setMessage("两次输入的新密码不一致。");
+    setBusy(true);
+    try {
+      await api("/me/password", { method: "POST", body: JSON.stringify({ current_password: data.get("current_password"), new_password: data.get("new_password") }) });
+      form.reset();
+      setDone(true);
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Panel title="修改密码">
+      <form onSubmit={submit} className="grid gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="pw-current">当前密码</Label>
+          <Input id="pw-current" name="current_password" type="password" autoComplete="current-password" required />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="pw-new">新密码（至少 12 位）</Label>
+          <Input id="pw-new" name="new_password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="pw-confirm">再输入一次</Label>
+          <Input id="pw-confirm" name="confirm" type="password" autoComplete="new-password" minLength={12} maxLength={128} required />
+        </div>
+        <div className="flex items-center gap-3 sm:col-span-3">
+          <Button disabled={busy}>{busy ? "保存中…" : "修改密码"}</Button>
+          {done && <span className="text-good">已修改。其他设备上的登录已退出，API Token 不受影响。</span>}
+          {message && <span className="text-bad">{message}</span>}
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
 function Cropper({ file, onCancel, onSave }: { file: File; onCancel: () => void; onSave: (blob: Blob) => Promise<void> }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -257,6 +304,8 @@ export default function Account({ user, onChange }: { user: User | null; onChang
             <Stat label="KDA" value={kda} hint={p ? `${p.stats.kills || 0} 击沉 / ${p.stats.deaths || 0} 沉没` : undefined} />
             <Stat label="累计搬运" value={p ? number(p.stats.delivered) : "—"} hint={p ? `抢劫 ${number(p.stats.robbed)}` : undefined} />
           </section>
+
+          <PasswordPanel />
 
           <Panel title="API Token">
             <p className="mt-0 text-ink-2">Token 只显示一次，30 天有效，可访问当前账号的 Bot 与测试。不要写进 Bot 源码或分享给他人。</p>
