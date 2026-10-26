@@ -10,7 +10,8 @@ BWRAP = os.environ.get("HALITE_BWRAP", "/usr/local/lib/halite3/bwrap")
 CXX = os.environ.get("HALITE_CXX", "/usr/bin/g++")
 MAX_UPLOAD = 5 * 1024 * 1024
 MAX_TRACE = 16 * 1024 * 1024
-REQUIRE_TRACE = os.environ.get("HALITE_REQUIRE_TRACE", "1") != "0"
+# The agent trace is optional: it only pins down the model / effort behind a version.
+REQUIRE_TRACE = os.environ.get("HALITE_REQUIRE_TRACE", "0") == "1"
 ADMIN_USERNAME = os.environ.get("HALITE_ADMIN", "cmander").lower()
 MAX_UNPACKED = 20 * 1024 * 1024
 MAX_USER_UPLOAD = 256 * 1024 * 1024

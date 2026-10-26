@@ -73,8 +73,9 @@ export default function Bots({ user }: { user: User | null }) {
     void guard(async () => {
       const file = form.get("file") as File;
       if (file.size > 5 * 1024 * 1024) throw new Error("文件不能超过 5 MiB。");
-      const trace = form.get("trace") as File;
-      if (trace.size > 16 * 1024 * 1024) throw new Error("对话轨迹不能超过 16 MiB，可以先用 gzip 压缩。");
+      const trace = form.get("trace") as File | null;
+      if (!trace || !trace.size) form.delete("trace");
+      else if (trace.size > 16 * 1024 * 1024) throw new Error("对话轨迹不能超过 16 MiB，可以先用 gzip 压缩。");
       form.set("rank", form.get("rank") ? "true" : "false");
       localStorage.setItem(SETUP_KEY, JSON.stringify(setup));
       const result = await api<{ id: string; ranked_job_id?: string; ranked_error?: string }>(`/bots/${upload!.id}/versions`, { method: "POST", body: form });
@@ -158,7 +159,9 @@ export default function Bots({ user }: { user: User | null }) {
                   )}
                   <div className="min-w-0 flex-1">
                     <h2 className="m-0 flex flex-wrap items-center gap-2 text-[24px] leading-[28px] font-normal">
-                      {bot.name}
+                      <a href={`/bots/${bot.id}`} className="hover:text-blue">
+                        {bot.name}
+                      </a>
                       {bot.builtin === 1 && <Tag>平台基准</Tag>}
                     </h2>
                     <p className="mt-1 mb-0 text-ink-2">{bot.description || "尚未添加简介"}</p>
@@ -323,7 +326,7 @@ export default function Bots({ user }: { user: User | null }) {
         <DialogContent className="border border-ink bg-paper">
           <DialogHeader>
             <DialogTitle className="font-normal">上传新版本 · {upload?.name}</DialogTitle>
-            <DialogDescription className="text-ink-2">Bot 源码（Python / C++ 单文件或 ZIP，5 MiB 以内）和写出它的对话轨迹一起上传。</DialogDescription>
+            <DialogDescription className="text-ink-2">Bot 源码（Python / C++ 单文件或 ZIP，5 MiB 以内）；可以附上写出它的 Agent 对话轨迹，用来确定模型和推理强度。参加比赛请到比赛页上传 bot.cpp。</DialogDescription>
           </DialogHeader>
           <form onSubmit={uploadVersion} className="flex max-h-[70svh] flex-col gap-4 overflow-y-auto">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -337,8 +340,8 @@ export default function Bots({ user }: { user: User | null }) {
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="trace">对话轨迹</Label>
-              <Input id="trace" name="trace" type="file" accept=".jsonl,.json,.md,.txt,.gz,.zip" required className="pt-1.5" />
+              <Label htmlFor="trace">Agent 对话轨迹（可选）</Label>
+              <Input id="trace" name="trace" type="file" accept=".jsonl,.json,.md,.txt,.gz,.zip" className="pt-1.5" />
               <span className="text-ink-3">
                 Claude Code：<code>~/.claude/projects/&lt;项目&gt;/&lt;会话&gt;.jsonl</code>；Codex：<code>~/.codex/sessions/…/rollout-*.jsonl</code>；其他工具导出 JSON / Markdown 也可以。16 MiB 以内，支持 .gz。仅自己和管理员可见。
               </span>
@@ -362,7 +365,7 @@ export default function Bots({ user }: { user: User | null }) {
               当前选择合计 <span className="text-ink">−{(entry(catalog, "model", setup.model).elo_offset + entry(catalog, "effort", setup.effort).elo_offset + entry(catalog, "harness", setup.harness).elo_offset).toFixed(0)}</span>。
             </p>
             <label className="flex cursor-pointer items-center gap-2">
-              <input type="checkbox" name="rank" defaultChecked className="size-4 accent-[var(--blue)]" /> 上传后立即参加公开评测（对阵全部平台基准，12 场）
+              <input type="checkbox" name="rank" defaultChecked className="size-4 accent-[var(--blue)]" /> 上传后立即参加 #0 测试比赛（对阵全部平台基准，12 场，公开）
             </label>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="notes">版本说明</Label>
@@ -405,7 +408,7 @@ export default function Bots({ user }: { user: User | null }) {
             <DialogTitle className="font-normal">
               提交 {rankTarget?.bot.name} v{rankTarget?.version} 参评？
             </DialogTitle>
-            <DialogDescription className="text-ink-2">将进行 12 场固定基准评测。Bot 名称、版本、成绩与评测回放会公开，源码仍然私有。</DialogDescription>
+            <DialogDescription className="text-ink-2">提交到 #0 测试比赛：12 场固定基准评测。Bot 名称、版本、成绩与评测回放会公开，源码仍然私有。</DialogDescription>
           </DialogHeader>
           <ErrorBox message={message} />
           <DialogFooter>
