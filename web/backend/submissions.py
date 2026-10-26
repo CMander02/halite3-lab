@@ -12,6 +12,7 @@ from .db import connect
 from .detect import detect, unpack
 from .rating import attribution, board
 from .security import user_for
+from .eligibility import CPP_ONLY
 
 router = APIRouter()
 
@@ -73,7 +74,7 @@ def submissions(db, where, params, admin=False):
         entry = elo.get(row["id"])
         item = {
             "id": row["id"], "bot_id": row["bot_id"], "bot_name": row["bot_name"], "version": row["version"],
-            "language": row["language"], "filename": row["filename"], "size": row["size"], "sha256": row["sha256"],
+            "language": row["language"], "eligible": row["language"] == "cpp", "filename": row["filename"], "size": row["size"], "sha256": row["sha256"],
             "notes": row["notes"], "created_at": row["created_at"], "listed": bool(row["listed"]),
             "archived": bool(row["archived"]), "is_default": row["default_version_id"] == row["id"],
             "author": row["author"], "author_id": row["owner_id"], "username": row["username"],
@@ -159,8 +160,11 @@ def patch_bot(bot_id: str, payload: BotPatch, request: Request):
         if not db.execute("SELECT 1 FROM bots WHERE id=? AND owner_id=?", (bot_id, user["id"])).fetchone():
             raise HTTPException(404, "Bot 不存在或无权访问。")
         if payload.default_version_id:
-            if not db.execute("SELECT 1 FROM versions WHERE id=? AND bot_id=? AND archived=0", (payload.default_version_id, bot_id)).fetchone():
+            version = db.execute("SELECT language FROM versions WHERE id=? AND bot_id=? AND archived=0", (payload.default_version_id, bot_id)).fetchone()
+            if not version:
                 raise HTTPException(400, "默认版本必须是这个 Bot 未归档的版本。")
+            if version["language"] != "cpp":
+                raise HTTPException(400, CPP_ONLY)
             db.execute("UPDATE bots SET default_version_id=? WHERE id=?", (payload.default_version_id, bot_id))
         if payload.clear_default:
             db.execute("UPDATE bots SET default_version_id=NULL WHERE id=?", (bot_id,))

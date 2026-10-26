@@ -6,6 +6,7 @@ import sqlite3
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 import sys
 
@@ -26,7 +27,8 @@ TRACE = (
     b'{"type":"assistant","sessionId":"s","userType":"external","entrypoint":"cli","timestamp":"2026-10-25T10:40:00Z","message":{"role":"assistant","model":"claude-opus-5-5","content":[],"usage":{"output_tokens":1200}}}\n'
     b'{"type":"api-request","sessionId":"s","timestamp":"2026-10-25T10:40:00Z","params":{"model":"claude-opus-5-5","output_config":{"effort":"high"}}}\n'
 )
-SOURCE = b'import sys,json\ninit=json.loads(sys.stdin.readline())\nprint("example",flush=True)\nfor line in sys.stdin: print("",flush=True)\n'
+SOURCE = b'#include <iostream>\n#include <string>\nint main(){std::string line;std::getline(std::cin,line);std::cout<<"example"<<std::endl;while(std::getline(std::cin,line))std::cout<<std::endl;}\n'
+PYTHON_SOURCE = b'import sys\nprint("legacy",flush=True)\nfor line in sys.stdin: print("",flush=True)\n'
 
 
 class BackendTest(unittest.TestCase):
@@ -61,7 +63,7 @@ class BackendTest(unittest.TestCase):
         name="test-bot",
         version="1.0",
         source=SOURCE,
-        filename="bot.py",
+        filename="bot.cpp",
         bot=None,
         trace=TRACE,
         declared=None,
@@ -117,7 +119,7 @@ class BackendTest(unittest.TestCase):
             self.b.post(
                 f"/api/bots/{bot}/versions",
                 data={"version": "hijack"},
-                files={"file": ("bot.py", SOURCE)},
+                files={"file": ("bot.cpp", SOURCE)},
             ).status_code,
             404,
         )
@@ -141,7 +143,7 @@ class BackendTest(unittest.TestCase):
         user = self.account(self.a, "alice")
         bot, v1 = self.upload(self.a)
         _, v2 = self.upload(
-            self.a, version="2.0", bot=bot, source=SOURCE + b"# second\n"
+            self.a, version="2.0", bot=bot, source=SOURCE + b"// second\n"
         )
         folder = S.DATA / "users" / user["id"] / "bots" / bot
         self.assertEqual((folder / "latest").resolve(), folder / "versions" / v2)
@@ -150,18 +152,18 @@ class BackendTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 201, response.text)
         job = response.json()["id"]
-        self.upload(self.a, version="3.0", bot=bot, source=SOURCE + b"# third\n")
+        self.upload(self.a, version="3.0", bot=bot, source=SOURCE + b"// third\n")
         seats = self.a.get(f"/api/tests/{job}").json()["matches"][0]["seats"]
         self.assertIn(v2, [s["id"] for s in seats])
         self.assertNotIn(v1, [s["id"] for s in seats])
         duplicate = self.a.post(
             f"/api/bots/{bot}/versions",
             data={"version": "2.0"},
-            files={"file": ("bot.py", SOURCE + b"# overwrite"), "trace": ("t.jsonl", TRACE)},
+            files={"file": ("bot.cpp", SOURCE + b"// overwrite"), "trace": ("t.jsonl", TRACE)},
         )
         self.assertEqual(duplicate.status_code, 409)
         self.assertEqual(
-            self.a.get(f"/api/versions/{v2}/source").content, SOURCE + b"# second\n"
+            self.a.get(f"/api/versions/{v2}/source").content, SOURCE + b"// second\n"
         )
 
     def test_csrf_and_scoped_api_token(self):
@@ -196,7 +198,7 @@ class BackendTest(unittest.TestCase):
         ]:
             stream = io.BytesIO()
             with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
-                archive.writestr("bot.py", SOURCE)
+                archive.writestr("bot.cpp", SOURCE)
                 info = zipfile.ZipInfo(name)
                 info.compress_type = zipfile.ZIP_DEFLATED
                 if mode:
@@ -205,7 +207,146 @@ class BackendTest(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 validate_archive(stream.getvalue(), "bot.zip")
         self.assertEqual(validate_archive(b"int main(){}", "bot.cpp"), "cpp")
-        self.assertEqual(validate_archive(SOURCE, "bot.py"), "python")
+        with self.assertRaises(ValueError):
+            validate_archive(PYTHON_SOURCE, "bot.py")
+
+    def test_only_cpp_sources_and_cpp_projects_can_be_uploaded(self):
+        self.account(self.a, "alice")
+        bot = self.a.post("/api/bots", json={"name": "cpp-only"}).json()["id"]
+
+        def archive(files):
+            data = io.BytesIO()
+            with zipfile.ZipFile(data, "w") as z:
+                for name, content in files:
+                    z.writestr(name, content)
+            return data.getvalue()
+
+        for filename, source in [
+            ("bot.py", PYTHON_SOURCE), ("BOT.PY", PYTHON_SOURCE),
+            ("bot.js", b"console.log('bot')"), ("bot", SOURCE),
+            ("python.zip", archive([("bot.py", PYTHON_SOURCE)])),
+            ("mixed.ZIP", archive([("main.cpp", SOURCE), ("bot.py", PYTHON_SOURCE)])),
+            ("nested.zip", archive([("main.cc", SOURCE), ("lib/helper.PY", PYTHON_SOURCE)])),
+            ("bytecode.zip", archive([("main.cpp", SOURCE), ("__pycache__/bot.pyc", b"x")])),
+            ("empty.zip", archive([("main.cpp/", b"")])),
+            ("headers.zip", archive([("bot.hpp", b"#pragma once")])),
+            ("broken.zip", b"not a zip"),
+        ]:
+            with self.subTest(filename=filename):
+                response = self.a.post(f"/api/bots/{bot}/versions", data={"version": "bad", "rank": "true"},
+                                       files={"file": (filename, source), "trace": ("trace.jsonl", TRACE)})
+                self.assertEqual(response.status_code, 400, response.text)
+        with connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM versions WHERE bot_id=?", (bot,)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0], 0)
+        for index, filename in enumerate(("main.cpp", "main.cc", "MAIN.CXX")):
+            _, vid = self.upload(self.a, bot=bot, version=str(index), filename=filename)
+            self.assertEqual(self.a.get(f"/api/versions/{vid}/source").content, SOURCE)
+        project = archive([("src/main.cc", SOURCE), ("src/helper.cxx", b"int helper(){return 1;}"), ("src/helper.hpp", b"#pragma once")])
+        self.upload(self.a, bot=bot, version="zip", filename="project.ZIP", source=project)
+        versions = next(b for b in self.a.get("/api/bots").json()["bots"] if b["id"] == bot)["versions"]
+        self.assertTrue(all(v["language"] == "cpp" and v["eligible"] for v in versions))
+
+    def legacy_python(self, vid):
+        """Reproduce a stored pre-policy user version without uploading Python."""
+        with connect() as db:
+            row = db.execute("SELECT object_key FROM versions WHERE id=?", (vid,)).fetchone()
+            (S.DATA / row["object_key"]).write_bytes(PYTHON_SOURCE)
+            db.execute("UPDATE versions SET language='python',filename='bot.py',sha256=?,size=? WHERE id=?",
+                       (hashlib.sha256(PYTHON_SOURCE).hexdigest(), len(PYTHON_SOURCE), vid))
+
+    def test_legacy_python_cannot_enter_rank_test_default_or_cached_runtime(self):
+        user = self.account(self.a, "alice")
+        bot, cpp = self.upload(self.a, version="1")
+        _, legacy = self.upload(self.a, bot=bot, version="2")
+        self.legacy_python(legacy)
+        for path, body in [
+            (f"/api/versions/{legacy}/rank", {}),
+            ("/api/tests", {"version_ids": [legacy, "builtin-baseline-v1"], "seeds": [11]}),
+        ]:
+            response = self.a.post(path, json=body)
+            self.assertEqual(response.status_code, 400, response.text)
+            self.assertIn("C++17", response.text)
+        self.assertEqual(self.a.patch(f"/api/bots/{bot}", json={"default_version_id": legacy}).status_code, 400)
+        with connect() as db:
+            # An old default pointer must not make bot_ids select Python.
+            db.execute("UPDATE bots SET default_version_id=? WHERE id=?", (legacy, bot))
+            seat = snapshot(version_info(db, legacy, user["id"]))
+        response = self.a.post("/api/tests", json={"bot_ids": [bot, "builtin-baseline"], "seeds": [11]})
+        self.assertEqual(response.status_code, 201, response.text)
+        seats = self.a.get(f"/api/tests/{response.json()['id']}").json()["matches"][0]["seats"]
+        self.assertEqual(seats[0]["id"], cpp)
+        directory = (S.DATA / seat["object_key"]).parent
+        (directory / "runtime").mkdir()
+        (directory / "build.json").write_text(json.dumps({"language": "python", "source_sha256": seat["sha256"]}))
+        with self.assertRaisesRegex(BotBuildError, "C\\+\\+17"):
+            prepare(seat)
+        self.assertEqual(self.a.get(f"/api/versions/{legacy}/source").content, PYTHON_SOURCE)
+        self.assertEqual(self.a.get(f"/api/versions/{legacy}/trace").status_code, 200)
+        items = self.a.get("/api/me/submissions").json()["submissions"]
+        self.assertFalse(next(v for v in items if v["id"] == legacy)["eligible"])
+        self.a.patch(f"/api/versions/{cpp}", json={"archived": True})
+        self.assertEqual(self.a.post("/api/tests", json={"bot_ids": [bot, "builtin-baseline"], "seeds": [11]}).status_code, 404)
+
+    def test_legacy_queued_matches_fail_once_and_cannot_be_retried(self):
+        self.account(self.a, "alice")
+        _, vid = self.upload(self.a)
+        response = self.a.post("/api/tests", json={"version_ids": [vid, "builtin-baseline-v1"], "seeds": [11, 29]})
+        job = response.json()["id"]
+        self.legacy_python(vid)
+        match = claim()
+        with patch("backend.runner.prepare") as build:
+            self.assertFalse(run_match(match))
+            build.assert_not_called()
+        detail = self.a.get(f"/api/tests/{job}").json()
+        self.assertFalse(detail["retryable"])
+        failed = next(m for m in detail["matches"] if m["id"] == match["id"])
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["attempts"], 1)
+        self.assertIn("C++17", failed["error"])
+        self.assertEqual(self.a.post(f"/api/tests/{job}/retry", json={}).status_code, 400)
+        with connect() as db:
+            self.assertEqual(db.execute("SELECT status FROM matches WHERE id=?", (match["id"],)).fetchone()[0], "failed")
+        self.assertEqual(self.a.post(f"/api/tests/{job}/cancel", json={}).status_code, 200)
+
+    def test_legacy_rankings_are_hidden_but_history_is_preserved(self):
+        from backend.rating import _cache
+        self.account(self.a, "alice")
+        _, vid = self.upload(self.a)
+        job = self.a.post(f"/api/versions/{vid}/rank", json={}).json()["id"]
+        with connect() as db:
+            games = db.execute("SELECT id,seat_json FROM matches WHERE job_id=?", (job,)).fetchall()
+            for game in games:
+                seats = json.loads(game["seat_json"])
+                stats = {str(i): {"rank": 1 if s["id"] == vid else 2, "score": 100} for i, s in enumerate(seats)}
+                db.execute("UPDATE matches SET status='complete',finished_at=123,result_json=? WHERE id=?", (json.dumps({"stats": stats}), game["id"]))
+                for i, s in enumerate(seats):
+                    db.execute("INSERT INTO match_players(match_id,seat,version_id,rank,score) VALUES(?,?,?,?,?)", (game["id"], i, s["id"], stats[str(i)]["rank"], 100))
+        _cache["key"] = None
+        self.assertIn(vid, [e["version_id"] for e in self.a.get("/api/leaderboard").json()["entries"]])
+        self.assertIn(vid, [e["version_id"] for e in self.a.get("/api/leaderboard/elo").json()["entries"]])
+        self.legacy_python(vid)
+        for path in ("/api/leaderboard", "/api/leaderboard/elo", "/api/leaderboard/stats"):
+            self.assertNotIn(vid, [e["version_id"] for e in self.a.get(path).json()["entries"]])
+        item = self.a.get("/api/me/submissions").json()["submissions"][0]
+        self.assertFalse(item["eligible"])
+        self.assertIsNone(item["elo"]["rank"])
+        self.assertEqual(item["ranked"]["complete"], 12)
+        self.assertEqual(self.a.get(f"/api/tests/{job}").json()["counts"], {"complete": 12})
+        self.assertEqual(self.a.post(f"/api/versions/{vid}/rank", json={}).status_code, 400)
+
+    def test_retired_python_download_is_not_served_even_if_stale_file_exists(self):
+        (S.DATA / "sample-python.zip").write_bytes(b"old generated sample")
+        with patch("backend.api.DIST", S.DATA):
+            self.assertEqual(self.a.get("/sample-python.zip").status_code, 404)
+
+    def test_cli_rejects_python_before_network_or_account_mutation(self):
+        import client
+        with patch.object(sys, "argv", ["client.py", "upload", "bot.py", "--name", "bot", "--version", "1", "--trace", "t.jsonl"]), patch.object(client, "request") as request:
+            with self.assertRaises(SystemExit) as exc:
+                client.main()
+            self.assertEqual(exc.exception.code, 2)
+            request.assert_not_called()
 
     def test_job_limits_and_fair_scheduling(self):
         self.account(self.a, "alice")
@@ -303,7 +444,7 @@ class BackendTest(unittest.TestCase):
         with self.assertRaises(BotBuildError):
             prepare(seat)
 
-    def test_real_cpp_python_match_and_replay(self):
+    def test_real_cpp_against_fixed_baseline_and_replay(self):
         self.account(self.a, "alice")
         source = (S.ROOT / "examples/cpp/main.cpp").read_bytes()
         _, vid = self.upload(self.a, filename="main.cpp", source=source)
@@ -324,6 +465,22 @@ class BackendTest(unittest.TestCase):
         self.assertTrue(
             self.a.get("/api/matches/" + match["id"] + "/logs").json()["players"]
         )
+
+    def test_cpp_zip_compiles_multiple_units_and_matches_fixed_raider(self):
+        self.account(self.a, "alice")
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as archive:
+            archive.writestr("src/MAIN.CXX", SOURCE.replace(b'int main(){', b'#include "helper.hpp"\nint main(){helper();'))
+            archive.writestr("src/helper.cc", b'int helper(){return 0;}')
+            archive.writestr("src/helper.hpp", b'int helper();')
+        _, vid = self.upload(self.a, filename="project.zip", source=stream.getvalue())
+        response = self.a.post("/api/tests", json={"version_ids": [vid, "builtin-raider-v1"], "seeds": [11]})
+        self.assertEqual(response.status_code, 201, response.text)
+        match = claim()
+        self.assertTrue(run_match(match))
+        detail = self.a.get("/api/matches/" + match["id"]).json()
+        self.assertEqual(detail["status"], "complete")
+        self.assertFalse(any(detail["result"]["terminated"].values()), detail)
 
 
     def test_single_admin_and_user_management(self):
@@ -356,7 +513,7 @@ class BackendTest(unittest.TestCase):
         self.account(self.a, "alice")
         response = self.a.post("/api/bots", json={"name": "traced"})
         bot = response.json()["id"]
-        missing = self.a.post(f"/api/bots/{bot}/versions", data={"version": "1"}, files={"file": ("bot.py", SOURCE)})
+        missing = self.a.post(f"/api/bots/{bot}/versions", data={"version": "1"}, files={"file": ("bot.cpp", SOURCE)})
         self.assertEqual(missing.status_code, 400)
         _, vid = self.upload(self.a, bot=bot, version="2",
                              declared={"model": "claude-haiku-5-5", "effort": "low", "harness": "claude-code"})

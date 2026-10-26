@@ -72,6 +72,7 @@ export default function Bots({ user }: { user: User | null }) {
     const form = new FormData(event.currentTarget);
     void guard(async () => {
       const file = form.get("file") as File;
+      if (!/\.(cpp|cc|cxx|zip)$/i.test(file.name)) throw new Error("仅支持 C++17 源码（.cpp、.cc、.cxx）或 C++ ZIP 项目。");
       if (file.size > 5 * 1024 * 1024) throw new Error("文件不能超过 5 MiB。");
       const trace = form.get("trace") as File;
       if (trace.size > 16 * 1024 * 1024) throw new Error("对话轨迹不能超过 16 MiB，可以先用 gzip 压缩。");
@@ -119,7 +120,7 @@ export default function Bots({ user }: { user: User | null }) {
       <PageHead
         eyebrow="我的 Bots"
         title="每次改进，一个不可覆盖的版本"
-        description="支持 Python、C++ 单文件或 ZIP 项目；源码始终私有。"
+        description="仅支持 C++17 单文件（.cpp、.cc、.cxx）或 C++ ZIP 项目；源码始终私有。"
         action={
           user ? (
             <Button onClick={() => setCreate(true)}>
@@ -146,8 +147,9 @@ export default function Bots({ user }: { user: User | null }) {
             const open = expanded === bot.id || bot.versions.length <= 1;
             const archived = bot.versions.filter((v) => v.archived).length;
             const visible = bot.versions.filter((v) => !v.archived || showArchived[bot.id]);
-            const active = bot.versions.find((v) => !v.archived);
-            const defaultId = bot.default_version_id || active?.id;
+            const active = bot.versions.find((v) => v.eligible && !v.archived);
+            const pinned = bot.versions.find((v) => v.id === bot.default_version_id && v.eligible && !v.archived);
+            const defaultId = pinned?.id || active?.id;
             return (
               <section key={bot.id} className={cn("pixel-frame flex min-w-0 flex-col", bot.builtin ? "border-dashed" : "")}>
                 <header className="flex items-start gap-3 p-4">
@@ -168,14 +170,14 @@ export default function Bots({ user }: { user: User | null }) {
                 {open && (
                   <div className="border-t border-line">
                     {bot.versions.length ? (
-                      visible.map((v, i) => (
+                      visible.map((v) => (
                         <div key={v.id} className={cn("flex flex-col gap-2 border-b border-line-2 px-4 py-3 last:border-0 sm:flex-row sm:items-center", v.archived ? "opacity-60" : "")}>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-blue">v{v.version}</span>
-                              <Tag>{v.language === "cpp" ? "C++17" : "Python"}</Tag>
-                              {i === 0 && !v.archived && <Tag className="border-blue text-blue">最新</Tag>}
-                              {bot.owned && v.id === defaultId && <Tag className="border-ink text-ink">{bot.default_version_id ? "默认" : "默认 · 最新"}</Tag>}
+                              <Tag>{v.language === "cpp" ? "C++17" : bot.builtin ? "Python · 固定基准" : "Python · 历史版本"}</Tag>
+                              {v.id === active?.id && <Tag className="border-blue text-blue">最新可参赛</Tag>}
+                              {bot.owned && v.id === defaultId && <Tag className="border-ink text-ink">{pinned ? "默认" : "默认 · 最新"}</Tag>}
                               {v.archived ? <Tag>已归档</Tag> : null}
                               {!bot.builtin && v.declared_model && (
                                 <span className="flex items-center gap-1.5 text-ink-2">
@@ -185,6 +187,7 @@ export default function Bots({ user }: { user: User | null }) {
                               )}
                             </div>
                             <div className="truncate text-ink-2">{v.notes || "未填写版本说明"}</div>
+                            {!v.eligible && <div className="text-warn">仅保留历史记录；请上传 C++17 版本参加测试和评测。</div>}
                             <div className="text-ink-3">
                               {v.sha256.slice(0, 12)} · {(v.size / 1024).toFixed(1)} KiB · {date(v.created_at)}
                             </div>
@@ -195,7 +198,7 @@ export default function Bots({ user }: { user: User | null }) {
                                 <Download size={14} /> 源码
                               </a>
                             </Button>
-                            {bot.owned && (
+                            {bot.owned && v.eligible && !v.archived && (
                               <Button variant="secondary" size="sm" disabled={busy} onClick={() => setRankTarget({ bot, id: v.id, version: v.version })}>
                                 <Trophy size={14} /> 参评
                               </Button>
@@ -208,7 +211,7 @@ export default function Bots({ user }: { user: User | null }) {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="min-w-44">
-                                  {!v.archived && v.id !== bot.default_version_id && (
+                                  {v.eligible && !v.archived && v.id !== bot.default_version_id && (
                                     <DropdownMenuItem onSelect={() => setDefault(bot, v.id)}>
                                       <Flag size={14} /> 设为默认版本
                                     </DropdownMenuItem>
@@ -283,9 +286,6 @@ export default function Bots({ user }: { user: User | null }) {
             <a className="text-blue" href="/api/docs">
               接口文档 &gt;
             </a>
-            <a className="text-blue" href="/sample-python.zip">
-              Python 示例
-            </a>
             <a className="text-blue" href="/sample-cpp.zip">
               C++ 示例
             </a>
@@ -323,7 +323,7 @@ export default function Bots({ user }: { user: User | null }) {
         <DialogContent className="border border-ink bg-paper">
           <DialogHeader>
             <DialogTitle className="font-normal">上传新版本 · {upload?.name}</DialogTitle>
-            <DialogDescription className="text-ink-2">Bot 源码（Python / C++ 单文件或 ZIP，5 MiB 以内）和写出它的对话轨迹一起上传。</DialogDescription>
+            <DialogDescription className="text-ink-2">C++17 源码（.cpp、.cc、.cxx 或 C++ ZIP，5 MiB 以内）和写出它的对话轨迹一起上传。ZIP 可含头文件，不能含 Python 文件。</DialogDescription>
           </DialogHeader>
           <form onSubmit={uploadVersion} className="flex max-h-[70svh] flex-col gap-4 overflow-y-auto">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -333,7 +333,7 @@ export default function Bots({ user }: { user: User | null }) {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="file">Bot 文件（bot.cpp 等）</Label>
-                <Input id="file" name="file" type="file" accept=".py,.cpp,.cc,.cxx,.zip" required className="pt-1.5" />
+                <Input id="file" name="file" type="file" accept=".cpp,.cc,.cxx,.zip" required className="pt-1.5" />
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
