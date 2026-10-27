@@ -208,7 +208,7 @@ function ContestDetail({ user, slug }: { user: User | null; slug: string }) {
           <Overview contest={c} />
         </TabsContent>
         <TabsContent value="standings">{tab === "standings" && <StandingsView contest={c} user={user} />}</TabsContent>
-        {user && <TabsContent value="mine">{tab === "mine" && <MyEntries contest={c} onChange={refresh} />}</TabsContent>}
+        {user && <TabsContent value="mine">{tab === "mine" && <MyEntries contest={c} user={user} onChange={refresh} />}</TabsContent>}
         {user?.is_admin && (
           <TabsContent value="admin">
             <AdminPanel contest={c} onChange={refresh} />
@@ -573,7 +573,7 @@ const lastSetup = (): Record<CatalogKind, string> => {
   }
 };
 
-function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () => Promise<void> }) {
+function MyEntries({ contest: c, user, onChange }: { contest: Contest; user: User; onChange: () => Promise<void> }) {
   const entries = useApi<{ entries: ContestEntry[] }>(`/contests/${c.slug}/entries`, c.status === "open" ? 15000 : 0);
   const bots = useApi<{ bots: Bot[] }>(c.status === "open" ? "/bots" : null);
   const catalog = useCatalog();
@@ -589,7 +589,8 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
     .flatMap((b) => b.versions.filter((v) => !v.archived && c.languages.includes(v.language) && canonical.includes(v.filename) && !used.has(v.id)).map((v) => ({ id: v.id, label: `${b.name} v${v.version}`, at: v.created_at })))
     .sort((a, b) => b.at - a.at);
   const lastBot = list[0]?.bot_name || c.slug;
-  const left = c.max_submissions - list.length;
+  // The admin has no submission quota.
+  const left = user.is_admin ? Infinity : c.max_submissions - list.length;
 
   async function run(task: () => Promise<unknown>) {
     setBusy(true);
@@ -625,7 +626,7 @@ function MyEntries({ contest: c, onChange }: { contest: Contest; onChange: () =>
   return (
     <div className="flex flex-col gap-6">
       {c.status === "open" && (
-        <Panel icon={Upload} tone="blue" title={`提交 bot.cpp · 剩余 ${left} / ${c.max_submissions} 次`}>
+        <Panel icon={Upload} tone="blue" title={user.is_admin ? `提交 bot.cpp · 已提交 ${list.length} 次（管理员不限）` : `提交 bot.cpp · 剩余 ${left} / ${c.max_submissions} 次`}>
           <form onSubmit={upload} className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="flex min-w-0 flex-col gap-1.5">

@@ -353,7 +353,7 @@ def bots(request: Request):
 @app.post("/api/bots", status_code=201)
 def create_bot(payload: BotCreate, request: Request):
     user = user_for(request)
-    rate_limit(request, "bot-create", 30, 3600, user["id"])
+    rate_limit(request, "bot-create", 30, 3600, user["id"], exempt=user["is_admin"])
     if not payload.name.strip():
         raise HTTPException(400, "请输入 Bot 名称。")
     bid = str(uuid.uuid4())
@@ -364,6 +364,7 @@ def create_bot(payload: BotCreate, request: Request):
                     "SELECT COUNT(*) FROM bots WHERE owner_id=?", (user["id"],)
                 ).fetchone()[0]
                 >= 30
+                and not user["is_admin"]
             ):
                 raise HTTPException(409, "每个用户最多创建 30 个 Bot。")
             db.execute(
@@ -413,7 +414,7 @@ async def read_limited(file, limit, message):
 async def store_version(bot_id, request, file, version, notes, trace=None, declared=None):
     user = user_for(request)
     declared = declared or {}
-    rate_limit(request, "upload", 20, 3600, user["id"])
+    rate_limit(request, "upload", 20, 3600, user["id"], exempt=user["is_admin"])
     disk_check()
     if (
         not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,31}", version)
@@ -461,7 +462,7 @@ async def store_version(bot_id, request, file, version, notes, trace=None, decla
                 "SELECT COUNT(*),COALESCE(SUM(v.size),0) FROM versions v JOIN bots b ON b.id=v.bot_id WHERE b.owner_id=?",
                 (user["id"],),
             ).fetchone()
-            if count >= 200 or size + len(data) > S.MAX_USER_UPLOAD:
+            if not user["is_admin"] and (count >= 200 or size + len(data) > S.MAX_USER_UPLOAD):
                 raise HTTPException(409, "已达到 200 个版本或 256 MiB 源码配额。")
             path.write_bytes(data)
             db.execute(
@@ -528,7 +529,7 @@ async def contest_upload(
     each call adds a new immutable version, numbered automatically unless `version` is given.
     Works with the web session or an API token, so an agent can submit on its own."""
     user = user_for(request)
-    rate_limit(request, "contest-submit", 30, 3600, user["id"])
+    rate_limit(request, "contest-submit", 30, 3600, user["id"], exempt=user["is_admin"])
     row = await run_in_threadpool(contests.contest_for_entry, user, key)
     allowed = json.loads(row["config_json"])["languages"]
     filename = Path(file.filename or "").name
@@ -542,7 +543,7 @@ async def contest_upload(
         if found:
             bot_id = found["id"]
         else:
-            if db.execute("SELECT COUNT(*) FROM bots WHERE owner_id=?", (user["id"],)).fetchone()[0] >= 30:
+            if not user["is_admin"] and db.execute("SELECT COUNT(*) FROM bots WHERE owner_id=?", (user["id"],)).fetchone()[0] >= 30:
                 raise HTTPException(409, "每个用户最多创建 30 个 Bot。")
             bot_id = str(uuid.uuid4())
             db.execute("INSERT INTO bots(id,owner_id,name,description,created_at) VALUES(?,?,?,?,?)",
@@ -577,12 +578,12 @@ def download_source(version_id: str, request: Request):
 @app.post("/api/tests", status_code=201)
 def new_test(payload: TestCreate, request: Request):
     user = user_for(request)
-    rate_limit(request, "test-create", 10, 3600, user["id"])
+    rate_limit(request, "test-create", 10, 3600, user["id"], exempt=user["is_admin"])
     version_ids = payload.version_ids
     if payload.bot_ids:
         if (
             version_ids
-            or len(payload.bot_ids) > 10
+            or (len(payload.bot_ids) > 10 and not user["is_admin"])
             or len(set(payload.bot_ids)) != len(payload.bot_ids)
         ):
             raise HTTPException(400, "bot_ids 与 version_ids 二选一，且不能重复。")
@@ -611,7 +612,7 @@ def new_test(payload: TestCreate, request: Request):
 @app.post("/api/versions/{version_id}/rank", status_code=201)
 def ranked(version_id: str, request: Request):
     user = user_for(request)
-    rate_limit(request, "rank-create", 10, 3600, user["id"])
+    rate_limit(request, "rank-create", 10, 3600, user["id"], exempt=user["is_admin"])
     jid = create_job(
         user["id"], "排名评测", [version_id], [2], [11, 29, 47], True, True
     )

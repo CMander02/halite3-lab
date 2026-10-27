@@ -569,7 +569,7 @@ def check_entry(db, row, user, version=None):
     if status(row) != "open":
         raise HTTPException(409, "比赛当前不在提交窗口内。")
     count = db.execute("SELECT COUNT(*) FROM contest_entries WHERE contest_id=? AND user_id=?", (row["id"], user["id"])).fetchone()[0]
-    if count >= config["max_submissions"]:
+    if count >= config["max_submissions"] and not user["is_admin"]:
         raise HTTPException(409, f"每人最多提交 {config['max_submissions']} 次，已用完。")
     if version is None:
         return count
@@ -649,7 +649,7 @@ def enter(user, key, version_id, note=""):
 def submit(key: str, payload: EntryCreate, request: Request):
     """Submit an already uploaded version (see POST /api/contests/{key}/submit to upload bot.cpp directly)."""
     user = user_for(request)
-    rate_limit(request, "contest-submit", 30, 3600, user["id"])
+    rate_limit(request, "contest-submit", 30, 3600, user["id"], exempt=user["is_admin"])
     return enter(user, key, payload.version_id, payload.note)
 
 

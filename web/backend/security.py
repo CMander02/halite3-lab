@@ -15,7 +15,9 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def rate_limit(request, category, limit, seconds, identity=""):
+def rate_limit(request, category, limit, seconds, identity="", exempt=False):
+    if exempt:
+        return
     # The origin only listens on loopback; cloudflared supplies the connecting IP.
     ip = (
         request.headers.get("cf-connecting-ip")
@@ -97,6 +99,11 @@ def verify_password(stored, password):
         return PASSWORDS.verify(stored, password)
     except (VerificationError, InvalidHashError):
         return False
+
+
+def is_admin(db, user_id):
+    row = db.execute("SELECT is_admin FROM users WHERE id=?", (user_id,)).fetchone()
+    return bool(row and row["is_admin"])
 
 
 def admin_for(request: Request):

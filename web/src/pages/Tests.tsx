@@ -43,6 +43,9 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
   const [message, setMessage] = useState("");
   const options = useMemo(() => bots.data?.bots.flatMap((b) => b.versions.filter((v) => v.eligible).map((v) => ({ ...v, bot_name: b.name, builtin: b.builtin }))) || [], [bots.data]);
   const seedList = seeds.split(/[,，\s]+/).filter(Boolean);
+  // The admin has no quotas; the larger per-job cap only guards against typos.
+  const maxBots = user?.is_admin ? Infinity : 10;
+  const maxGames = user?.is_admin ? 20000 : 300;
   const count = modes.reduce((sum, k) => sum + combinations(selected.length, k) * (rotate ? k : 1), 0) * seedList.length;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -172,14 +175,14 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
             <div>
               <div className="mb-2 flex flex-wrap items-center gap-3">
                 <span>参赛版本</span>
-                <span className="text-ink-3">2–10 个；仅 C++17 与平台固定基准，开始后固定版本</span>
+                <span className="text-ink-3">{user?.is_admin ? "至少 2 个（管理员不限数量）" : "2–10 个"}；仅 C++17 与平台固定基准，开始后固定版本</span>
                 <Button
                   type="button"
                   variant="secondary"
                   size="xs"
                   onClick={() => {
                     const latest = (bots.data?.bots || []).map((b) => b.versions.find((v) => v.eligible && !v.archived)?.id).filter((id): id is string => Boolean(id));
-                    if (latest.length > 10) return setMessage("超过 10 个 Bot，请手动选择。");
+                    if (latest.length > maxBots) return setMessage("超过 10 个 Bot，请手动选择。");
                     setSelected(latest);
                   }}
                 >
@@ -229,9 +232,9 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <div>
                 <span className="num font-pixel text-[24px] leading-[28px] text-blue">{number(count)}</span> 场比赛
-                <div className="text-ink-3">2 / 8 人 32×32 · 200 回合；4 人 48×48 · 300 回合 · 单任务上限 300 场</div>
+                <div className="text-ink-3">2 / 8 人 32×32 · 200 回合；4 人 48×48 · 300 回合 · 单任务上限 {number(maxGames)} 场</div>
               </div>
-              <Button size="lg" disabled={busy || count === 0 || count > 300 || selected.length > 10 || modes.some((k) => selected.length < k)}>
+              <Button size="lg" disabled={busy || count === 0 || count > maxGames || selected.length > maxBots || modes.some((k) => selected.length < k)}>
                 <Play size={14} /> {busy ? "提交中…" : "提交到后端 >"}
               </Button>
             </div>

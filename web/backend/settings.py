@@ -17,6 +17,8 @@ MAX_UNPACKED = 20 * 1024 * 1024
 MAX_USER_UPLOAD = 256 * 1024 * 1024
 MAX_MATCHES_PER_DAY = 500
 MAX_MATCHES_PER_JOB = 300
+# The admin has no usage quotas; this only stops a mistyped test from enqueueing millions of games.
+ADMIN_MAX_MATCHES_PER_JOB = 20000
 MIN_DISK_FREE = int(os.environ.get("HALITE_MIN_DISK_FREE", 8 * 1024**3))
 LEASE_SECONDS = 180
 MAX_GAME_SECONDS = 100

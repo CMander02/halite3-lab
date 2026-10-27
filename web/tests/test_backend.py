@@ -809,6 +809,32 @@ class BackendTest(unittest.TestCase):
         contest = next(c for c in self.a.get("/api/contests").json()["contests"] if c["slug"] == "draft")
         self.assertEqual(self.a.delete(f"/api/admin/contests/{contest['id']}").status_code, 200)
 
+    def test_admin_has_no_usage_quotas(self):
+        for name, value in [("MAX_MATCHES_PER_DAY", 4), ("MAX_MATCHES_PER_JOB", 4)]:
+            self.addCleanup(setattr, S, name, getattr(S, name))
+            setattr(S, name, value)
+        self.account(self.a, S.ADMIN_USERNAME)
+        self.account(self.b, "bob")
+        source = b'#include <iostream>\nint main(){std::string s; std::getline(std::cin,s); std::cout<<"x"<<std::endl; while(std::getline(std::cin,s)) std::cout<<std::endl;}\n'
+        _, va = self.upload(self.a, source=source)
+        _, vb = self.upload(self.b, source=source)
+        test = lambda client, version, seeds: client.post("/api/tests", json={"version_ids": [version, "builtin-baseline-v1"], "seeds": seeds})
+        # Regular users keep the per-job, concurrent-job and daily limits.
+        self.assertEqual(test(self.b, vb, [1, 2, 3, 4, 5]).status_code, 400)
+        for seed in [1, 2, 3]:
+            self.assertEqual(test(self.b, vb, [seed]).status_code, 201)
+        self.assertEqual(test(self.b, vb, [4]).status_code, 429)
+        # The admin has none of them, nor the hourly rate limit or the 10-seed cap.
+        self.assertEqual(test(self.a, va, list(range(12))).status_code, 201)
+        for seed in range(11):
+            self.assertEqual(test(self.a, va, [seed]).status_code, 201)
+        # ... nor a contest's submission cap.
+        self.assertEqual(self.a.post("/api/admin/contests", json=self.contest_payload(slug="one", languages=["cpp"], max_submissions=1, modes=[2])).status_code, 201)
+        bot, first = self.upload(self.a, name="entry", source=source)
+        _, second = self.upload(self.a, version="2.0", bot=bot, source=source + b"\n")
+        for version in [first, second]:
+            self.assertEqual(self.a.post("/api/contests/one/entries", json={"version_id": version}).status_code, 201)
+
     def test_written_game_rules(self):
         from backend import contest_docs as D
         expected = {2: [(8, 16), (23, 16)], 4: [(14, 14), (33, 14), (14, 33), (33, 33)],

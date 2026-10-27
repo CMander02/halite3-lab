@@ -1,11 +1,13 @@
 import itertools
 import json
+import math
 import uuid
 from fastapi import HTTPException
 from . import settings as S
 from .db import connect, now
 from .storage import disk_check
 from .eligibility import CPP_ONLY, eligible
+from .security import is_admin
 
 
 def require_eligible(versions):
@@ -69,15 +71,18 @@ def public_seat(seat):
 
 def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=False):
     disk_check()
+    # The admin has no usage quotas (version / seed counts, per-job, daily and concurrent limits).
+    with connect() as db:
+        admin = is_admin(db, user_id)
     if (
         not version_ids
         or len(version_ids) != len(set(version_ids))
-        or len(version_ids) > 10
+        or (len(version_ids) > 10 and not admin)
     ):
         raise HTTPException(400, "请选择 2 至 10 个不同版本。")
     if (
         not seeds
-        or len(seeds) > 10
+        or (len(seeds) > 10 and not admin)
         or len(set(seeds)) != len(seeds)
         or any(
             not isinstance(s, int) or isinstance(s, bool) or not 0 <= s <= 2**32 - 1
@@ -126,6 +131,11 @@ def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=Fa
                 "rotate_seats": True,
             }
         else:
+            # Count before enumerating, so an oversized request fails fast.
+            limit = S.ADMIN_MAX_MATCHES_PER_JOB if admin else S.MAX_MATCHES_PER_JOB
+            planned = len(seeds) * sum(math.comb(len(versions), mode) * (mode if rotate else 1) for mode in modes)
+            if planned > limit:
+                raise HTTPException(400, f"本次 {planned} 场，单任务上限 {limit} 场，请减少地图或座位轮换。")
             configurations = []
             for mode in modes:
                 for combo in itertools.combinations(versions, mode):
@@ -146,25 +156,21 @@ def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=Fa
                 "setups": {str(mode): S.MODE_SETUPS[mode] for mode in modes},
             }
         count = len(configurations)
-        if count > S.MAX_MATCHES_PER_JOB:
-            raise HTTPException(
-                400,
-                f"本次 {count} 场，单任务上限 {S.MAX_MATCHES_PER_JOB} 场，请减少地图或座位轮换。",
-            )
-        today = db.execute(
-            "SELECT COUNT(*) FROM matches WHERE owner_id=? AND created_at>=?",
-            (user_id, now() - 86400),
-        ).fetchone()[0]
-        if today + count > S.MAX_MATCHES_PER_DAY:
-            raise HTTPException(
-                429, f"每用户 24 小时内最多 {S.MAX_MATCHES_PER_DAY} 场。"
-            )
-        unfinished = db.execute(
-            "SELECT COUNT(DISTINCT job_id) FROM matches WHERE owner_id=? AND status IN ('queued','running')",
-            (user_id,),
-        ).fetchone()[0]
-        if unfinished >= 3:
-            raise HTTPException(429, "最多同时保留 3 个未完成任务。")
+        if not admin:
+            today = db.execute(
+                "SELECT COUNT(*) FROM matches WHERE owner_id=? AND created_at>=?",
+                (user_id, now() - 86400),
+            ).fetchone()[0]
+            if today + count > S.MAX_MATCHES_PER_DAY:
+                raise HTTPException(
+                    429, f"每用户 24 小时内最多 {S.MAX_MATCHES_PER_DAY} 场。"
+                )
+            unfinished = db.execute(
+                "SELECT COUNT(DISTINCT job_id) FROM matches WHERE owner_id=? AND status IN ('queued','running')",
+                (user_id,),
+            ).fetchone()[0]
+            if unfinished >= 3:
+                raise HTTPException(429, "最多同时保留 3 个未完成任务。")
         job_id = str(uuid.uuid4())
         created = now()
         db.execute(
