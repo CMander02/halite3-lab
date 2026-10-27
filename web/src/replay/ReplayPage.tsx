@@ -328,7 +328,7 @@ export default function ReplayPage({ id }: { id: string }) {
             {replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE ? ` · ${replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE} 船以上全沉` : ""}
           </dd>
           <dt>来源</dt>
-          <dd className="m-0 text-ink">{m.kind === "ranked" ? "固定基准评测" : m.kind === "demo" ? "公开示例" : "私人测试"}</dd>
+          <dd className="m-0 text-ink">{m.kind === "ranked" ? "固定基准评测" : m.kind === "ranked-multi" ? "多人基准评测" : m.kind === "demo" ? "公开示例" : "私人测试"}</dd>
         </dl>
       )}
       {m?.can_view_logs && (

@@ -5,7 +5,8 @@ import { playerColor } from "@/lib/colors";
 import { Empty, ModeLabel, Status, Tag } from "@/components/pixel";
 import { AvatarStack } from "@/components/UserAvatar";
 
-const kindLabel = (kind: string) => (kind === "ranked" ? "基准评测" : kind === "demo" ? "公开示例" : "私人测试");
+const kindLabel = (kind: string) =>
+  kind === "ranked" ? "基准评测" : kind === "ranked-multi" ? "多人评测" : kind === "demo" ? "公开示例" : "私人测试";
 
 function winnerOf(match: Match) {
   if (!match.result) return null;

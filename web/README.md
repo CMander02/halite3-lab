@@ -83,7 +83,7 @@ CLI 将 Token 保存在 `~/.config/halite3/credentials.json`，权限 0600。也
 ## 管理员、对话轨迹与 ELO 修正
 
 - **唯一管理员**：`HALITE_ADMIN`（默认 `cmander`）对应的账号在启动迁移时设为管理员，其他账号的管理员标记会被清除；`users_single_admin` 部分唯一索引保证全站最多一个管理员。`/admin` 页面与 `/api/admin/*` 接口提供：用户列表、停用/启用（同时撤销会话与 Token、取消排队中的私人对局）、重置临时密码、强制下线；提交审核（人工确认模型 / 推理 / 平台、重新检测、下载轨迹）；以及模型、推理强度、平台三张目录的 ELO 修正和识别规则。
-- **上传必须附带对话轨迹**：`POST /api/bots/{id}/versions` 需要 `file`（bot 源码）和 `trace`（生成它的对话），可选 `model` / `effort` / `harness`（`GET /api/catalog` 中的 id）和 `rank=true`（上传后直接参加 12 场基准评测）。轨迹最多 16 MiB，支持 gzip / zip，gzip 后保存在版本目录的 `trace.gz`，只有作者和管理员能下载（`GET /api/versions/{id}/trace`）。设置 `HALITE_REQUIRE_TRACE=0` 可关闭强制要求。
+- **上传必须附带对话轨迹**：`POST /api/bots/{id}/versions` 需要 `file`（bot 源码）和 `trace`（生成它的对话），可选 `model` / `effort` / `harness`（`GET /api/catalog` 中的 id）和 `rank=true`（上传后直接参加 12 场基准评测和多人评测）。轨迹最多 16 MiB，支持 gzip / zip，gzip 后保存在版本目录的 `trace.gz`，只有作者和管理员能下载（`GET /api/versions/{id}/trace`）。设置 `HALITE_REQUIRE_TRACE=0` 可关闭强制要求。
 - **检测**（`backend/detect.py`）：优先读取结构化字段——Claude Code 会话 JSONL 的 `message.model`、`api-request.params.output_config.effort` 与会话签名；Codex rollout 的 `session_meta.originator`、`turn_context.model/effort`；其他 JSON 导出里的 `model` / `effort` 类字段；最后才退回到全文正则（置信度最低）。同时统计消息数、输出 token 和首末时间戳（用时）。
 - **计分采用的配置**（`backend/rating.py::attribution`）：管理员确认优先；否则使用用户声明，但若检测置信度为中/高且检测到的配置修正更大，则改用检测结果——少报不能换来加分。
 - **ELO**：对全部公开且完成的对局做 Bradley–Terry 极大似然拟合，每局按名次两两比较，n 人局每对权重 1/(n−1)，每个版本另有对 1500 锚点的一胜一负先验，结果与对局顺序无关并附近似标准差。**修正后 ELO = 原始 ELO − 模型修正 − 推理修正 − 平台修正**；平台基准不修正、不参与排名。`GET /api/leaderboard/elo` 返回总榜，`GET /api/me/submissions` 返回自己每个版本的声明、检测、计分配置、评测进度、ELO 与名次。
@@ -124,7 +124,9 @@ python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
 
 回放保存 gzip JSON `.hlt` 数据，包括每回合船只、矿量、动作和事件。播放器将 H3 的下一帧船状态与本帧末尾银行和矿场对齐，避免回合偏移。提供逐帧、播放、1×/2×/4×、棋盘视角、下载、移动端触摸进度。源码始终私有；私人测试及日志按账号隔离。
 
-公开排行榜由用户主动提交，每个版本固定对阵 baseline / raider，种子 11、29、47，交换座位，共 12 场。全部完成后根据胜率分为 S≥75%、A≥50%、B≥25%、C<25%。私人自选测试不计入排行榜。参评会公开版本名称、作者、成绩和对应比赛回放，源码保持私有。
+公开排行榜由用户主动提交，每个版本固定对阵 baseline / raider，种子 11、29、47，交换座位，共 12 场。全部完成后根据胜率分为 S≥75%、A≥50%、B≥25%、C<25%。
+
+每次参评同时自动建一个公开的“多人评测”任务（`kind=ranked-multi`，`backend/scheduler.py::multiplayer_games`），对手池为 baseline、raider 加上 #0 中其他 Bot 最新提交里全局 ELO 最高的 7 个（`MULTI_POOL`）。4 人局：对手池按顺序和交错各切一遍三人组，每组与候选同桌、打三张地图中的两张、轮换全部座位，对手池满 9 个时 48 场；8 人局：每张地图一桌、每桌少掉不同的两个对手、轮换全部座位，共 24 场。对手不足 3 个时不跑 4 人，不足 7 个时不跑 8 人。这些对局计入全局 ELO 和 4 / 8 人子榜，不影响 #0 名次和 Tier；场数计入每日配额，但不占“同时 3 个未完成任务”的名额。私人自选测试不计入排行榜。参评会公开版本名称、作者、成绩和对应比赛回放，源码保持私有。
 
 私人回放默认保留 30 天；公开评测和示例回放保留，受到磁盘总量保护。源码、编译缓存和数据库不自动过期。当前没有邮箱找回密码功能。
 

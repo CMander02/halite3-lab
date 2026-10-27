@@ -381,7 +381,7 @@ function Overview({ contest: c }: { contest: Contest }) {
                   <div className="font-bold">云端：{c.practice ? "公开成绩" : "只有这里能做的事"}</div>
                   <p className="mt-1 mb-0 text-ink-2">
                     {c.practice
-                      ? "提交后对阵靶子的 12 场立即公开，计入全局 ELO 和 Tier。"
+                      ? "提交后对阵靶子的 12 场立即公开，计入全局 ELO 和 Tier；另自动加跑 4 人 / 8 人多人评测，计入全局 ELO 和多人榜。"
                       : "截止后的正式评测：对手是其他选手的最终版本（你拿不到），地图包含隐藏地图，所有人同一个沙箱和时限，并按模型 / 推理强度修正 ELO。"}
                   </p>
                 </div>

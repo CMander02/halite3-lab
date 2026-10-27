@@ -454,6 +454,57 @@ class BackendTest(unittest.TestCase):
         self.assertTrue(all(m["public"] == 1 for m in job["matches"]))
         self.assertEqual(self.a.get("/api/leaderboard").json()["entries"], [])
 
+    def test_multiplayer_benchmark_schedule(self):
+        from collections import Counter
+        from backend.scheduler import multiplayer_games
+        cand, pool = {"id": "c"}, [{"id": f"o{i}"} for i in range(9)]
+        games = multiplayer_games(cand, pool)
+        self.assertEqual(Counter(len(seats) for seats, _ in games), {4: 48, 8: 24})
+        for mode in (4, 8):
+            tables = [(seats, seed) for seats, seed in games if len(seats) == mode]
+            ids = [[s["id"] for s in seats] for seats, _ in tables]
+            self.assertTrue(all(len(set(t)) == mode and "c" in t for t in ids))
+            self.assertEqual(len({(tuple(t), seed) for t, (_, seed) in zip(ids, tables)}), len(tables))
+            seats = Counter(t.index("c") for t in ids)
+            self.assertEqual(set(seats), set(range(mode)))
+            self.assertEqual(len(set(seats.values())), 1)
+            self.assertEqual({o for t in ids for o in t} - {"c"}, {o["id"] for o in pool})
+        self.assertEqual(Counter(o for t, _ in games if len(t) == 4 for o in [s["id"] for s in t])["o0"], 16)
+        self.assertEqual({len(seats) for seats, _ in multiplayer_games(cand, pool[:5])}, {4})
+        self.assertEqual(multiplayer_games(cand, pool[:2]), [])
+
+    def test_ranked_submission_also_queues_public_multiplayer_games(self):
+        self.account(self.a, "alice")
+        versions = []
+        with patch.object(S, "MAX_MATCHES_PER_DAY", 5000):
+            for i in range(9):
+                _, vid = self.upload(self.a, name=f"bot-{i}")
+                response = self.a.post(f"/api/versions/{vid}/rank", json={})
+                self.assertEqual(response.status_code, 201, response.text)
+                versions.append(vid)
+                with connect() as db:  # keep the 3-unfinished-jobs limit out of the way
+                    db.execute("UPDATE matches SET status='cancelled' WHERE job_id=?", (response.json()["id"],))
+            self.assertEqual(self.a.post(f"/api/versions/{vid}/rank", json={}).status_code, 201)
+        with connect() as db:
+            jobs = db.execute("SELECT * FROM jobs WHERE kind='ranked-multi' AND candidate_id=?", (vid,)).fetchall()
+            self.assertEqual(len(jobs), 1)
+            config = json.loads(jobs[0]["config_json"])
+            rows = db.execute("SELECT mode,public,seat_json FROM matches WHERE job_id=?", (jobs[0]["id"],)).fetchall()
+            first = db.execute("SELECT COUNT(*) FROM jobs WHERE kind='ranked-multi' AND candidate_id=?", (versions[0],)).fetchone()[0]
+            queued = db.execute("SELECT COUNT(*) FROM matches m JOIN jobs j ON j.id=m.job_id WHERE j.kind='ranked-multi' AND m.status='queued'").fetchone()[0]
+        # Pool: both builtins, then seven of the eight other #0 bots; never the candidate's own bot.
+        self.assertEqual(config["opponents"][:2], ["builtin-baseline-v1", "builtin-raider-v1"])
+        self.assertEqual(len(set(config["opponents"][2:]) & set(versions[:8])), 7)
+        self.assertEqual(sorted(config["setups"]), ["4", "8"])
+        self.assertEqual({m: sum(r["mode"] == m for r in rows) for m in (4, 8)}, {4: 48, 8: 24})
+        self.assertTrue(all(r["public"] == 1 for r in rows))
+        self.assertTrue(all(vid in [s["id"] for s in json.loads(r["seat_json"])] for r in rows))
+        self.assertEqual(first, 0)  # alone with two builtins: too few opponents
+        self.assertGreater(queued, 72)  # earlier multiplayer jobs did not count as unfinished jobs
+        job = self.a.get("/api/tests/" + jobs[0]["id"]).json()
+        self.assertEqual(job["kind"], "ranked-multi")
+        self.assertEqual(job["total"], 72)
+
     def test_invalid_cpp_build_is_cached_and_not_retried(self):
         self.account(self.a, "alice")
         _, vid = self.upload(

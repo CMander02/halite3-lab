@@ -365,7 +365,7 @@ export default function Bots({ user }: { user: User | null }) {
               当前选择合计 <span className="text-ink">−{(entry(catalog, "model", setup.model).elo_offset + entry(catalog, "effort", setup.effort).elo_offset + entry(catalog, "harness", setup.harness).elo_offset).toFixed(0)}</span>。
             </p>
             <label className="flex cursor-pointer items-center gap-2">
-              <input type="checkbox" name="rank" defaultChecked className="size-4 accent-[var(--blue)]" /> 上传后立即参加 #0 测试比赛（对阵全部平台基准，12 场，公开）
+              <input type="checkbox" name="rank" defaultChecked className="size-4 accent-[var(--blue)]" /> 上传后立即参加 #0 测试比赛（对阵全部平台基准 12 场，另加 4 人 / 8 人多人评测，公开）
             </label>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="notes">版本说明</Label>
@@ -408,7 +408,7 @@ export default function Bots({ user }: { user: User | null }) {
             <DialogTitle className="font-normal">
               提交 {rankTarget?.bot.name} v{rankTarget?.version} 参评？
             </DialogTitle>
-            <DialogDescription className="text-ink-2">提交到 #0 测试比赛：12 场固定基准评测。Bot 名称、版本、成绩与评测回放会公开，源码仍然私有。</DialogDescription>
+            <DialogDescription className="text-ink-2">提交到 #0 测试比赛：12 场固定基准评测，另加 4 人 / 8 人多人评测（对阵 baseline、raider 和 #0 中 ELO 最高的 Bot）。Bot 名称、版本、成绩与评测回放会公开，源码仍然私有。</DialogDescription>
           </DialogHeader>
           <ErrorBox message={message} />
           <DialogFooter>

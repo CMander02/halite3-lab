@@ -253,7 +253,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
                   <Status value={job.status} />
                 </div>
                 <div className="mb-2 text-ink-3">
-                  {job.kind === "ranked" ? "固定基准评测" : "私人循环赛"} · {date(job.created_at)}
+                  {job.kind === "ranked" ? "固定基准评测" : job.kind === "ranked-multi" ? "多人基准评测" : "私人循环赛"} · {date(job.created_at)}
                 </div>
                 <Progress job={job} />
               </div>
