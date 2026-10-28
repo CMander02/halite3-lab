@@ -10,7 +10,7 @@ from . import catalog as C
 from . import settings as S
 from .db import connect
 from .detect import detect, unpack
-from .rating import attribution, board
+from .rating import attribution, board, matchup_matrix
 from .security import user_for
 from .eligibility import CPP_ONLY
 
@@ -106,6 +106,14 @@ def elo_board():
             entry["attribution"] = {k: {"value": v["value"], "offset": v["offset"], "source": v["source"]} if isinstance(v, dict) else v
                                     for k, v in entry["attribution"].items()}
     return {"entries": entries, "anchor": 1500}
+
+
+@router.get("/api/leaderboard/matrix")
+def head_to_head(mode: int | None = None):
+    if mode not in (None, 2, 4, 8):
+        raise HTTPException(422, "人数模式必须为 2、4 或 8。")
+    with connect() as db:
+        return matchup_matrix(db, mode)
 
 
 @router.get("/api/me/submissions")

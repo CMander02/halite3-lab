@@ -150,10 +150,10 @@ export default function Overview({ user }: { user: User | null }) {
             </Panel>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { title: "KDA 王", tab: "kda", entry: topKda, value: topKda ? topKda.kda.toFixed(2) : "—" },
-                { title: "抢劫王", tab: "robbed", entry: topRob, value: topRob ? compact(topRob.robbed) : "—" },
-              ].map(({ title, tab, entry, value }) => (
-                <a key={title} href={`/leaderboard?tab=${tab}`} className="pixel-frame ticks block p-3 hover:bg-blue-50">
+                { title: "KDA 王", view: "kda", entry: topKda, value: topKda ? topKda.kda.toFixed(2) : "—" },
+                { title: "抢劫王", view: "robbed", entry: topRob, value: topRob ? compact(topRob.robbed) : "—" },
+              ].map(({ title, view, entry, value }) => (
+                <a key={title} href={`/leaderboard?view=${view}`} className="pixel-frame ticks block p-3 hover:bg-blue-50">
                   <div className="text-ink-2">{title}</div>
                   <div className="num text-[24px] leading-[30px] text-blue">{value}</div>
                   {entry && (

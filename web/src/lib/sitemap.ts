@@ -1,3 +1,8 @@
+import { BOARD_VIEWS } from "./leaderboard";
+
+const BOARD_LABELS = ["ELO 总榜", "Tier", "胜率矩阵", "KDA", "抢劫", "搬运", "视野", "采矿"];
+const CONTEST_TABS: [string, string][] = [["", "概览"], ["standings", "排行"], ["tier", "Tier"], ["matches", "对局"], ["rules", "规则"], ["mine", "我的提交"]];
+
 // Site map: which page (type) links to which. The header and the 我的 menu read their
 // items from here, so the /sitemap page always shows the real navigation order. The
 // in-page edges are written by hand from the page sources — update them with the page.
@@ -35,6 +40,8 @@ export type SiteNode = {
   tabs?: string[];
   /** the tabs have their own URLs */
   tabsInUrl?: boolean;
+  /** direct links to the page's views */
+  views?: { label: string; href: string }[];
   note: string;
   x: number;
   y: number;
@@ -51,10 +58,16 @@ export const NODES: SiteNode[] = [
   { id: "home", label: "概览", route: "/", zone: "public", note: "首页（点 Logo 回来）：进入比赛、近期对战、#0 Tier 前 5、规则摘要、起航流程（读题 → 提交 → 看排行）", x: 120, y: 90 },
   { id: "matches", label: "对战列表", route: "/matches", zone: "public", note: "全站公开对局 + 自己的私人对局，可按模式 / 版本筛选", x: 120, y: 330 },
   { id: "replay", label: "回放", route: "/matches/:id", zone: "public", tabs: ["战况", "数据", "近期"], note: "单局回放；返回到打开它的页面，参赛者可点进 Bot 页，比赛对局可点回比赛", x: 120, y: 570 },
-  { id: "leaderboard", label: "全局排行", route: "/leaderboard", zone: "public", tabs: ["ELO 总榜", "KDA", "抢劫", "搬运", "视野", "采矿"], tabsInUrl: true, note: "跨比赛的修正后 ELO 总榜 + 子榜（全部公开对局）；Tier 已移到 #0", x: 380, y: 210 },
+  { id: "leaderboard", label: "全局排行", route: "/leaderboard", zone: "public", tabs: BOARD_LABELS, tabsInUrl: true,
+    views: [
+      ...BOARD_VIEWS.map((view, i) => ({ label: BOARD_LABELS[i], href: `/leaderboard?view=${view}` })),
+      ...[["2", "1v1"], ["4", "4 人"], ["8", "8 人"]].map(([mode, label]) => ({ label: `胜率矩阵 · ${label}`, href: `/leaderboard?view=matrix&mode=${mode}` })),
+    ],
+    note: "跨比赛的全局榜：修正后 ELO 总榜、对战胜率矩阵、子榜（全部公开对局）；Tier 是 #0 的成绩，和 #0 比赛页共用一个榜。视图、人数和筛选都在 URL 里。", x: 380, y: 210 },
   { id: "bot", label: "Bot 详情", route: "/bots/:id", zone: "public", note: "任何人的 Bot 公开页：版本、ELO 走势、参加过的比赛", x: 380, y: 450 },
   { id: "contests", label: "比赛列表", route: "/contests", zone: "contest", note: "按状态分组的比赛卡片（#0 常驻测试赛也在这里）", x: 640, y: 90 },
-  { id: "contest", label: "比赛详情", route: "/contests/:slug/:tab", zone: "contest", tabs: ["概览", "排行", "Tier（#0）", "对局", "规则", "我的提交", "管理"], tabsInUrl: true, note: "比赛的一切：题面与题目包、排行（#0 另有 4 / 8 人评测榜）、Tier、全部对局、规则、提交", x: 640, y: 330 },
+  { id: "contest", label: "比赛详情", route: "/contests/:slug/:tab", zone: "contest", tabs: ["概览", "排行", "Tier（#0）", "对局", "规则", "我的提交", "管理"], tabsInUrl: true,
+    views: CONTEST_TABS.map(([tab, label]) => ({ label: `#0 ${label}`, href: `${PRACTICE}${tab && `/${tab}`}` })), note: "比赛的一切：题面与题目包、排行（#0 另有 4 / 8 人评测榜）、Tier、全部对局、规则、提交", x: 640, y: 330 },
   { id: "contestNew", label: "新建比赛", route: "/contests/new", zone: "contest", access: "admin", note: "管理员创建比赛", x: 900, y: 90 },
   { id: "bots", label: "我的 Bots", route: "/bots", zone: "personal", note: "创建 Bot、上传版本、管理版本；参评会提交到 #0 并转到 #0 的“我的提交”", x: 640, y: 570 },
   { id: "me", label: "我的主页", route: "/me", zone: "personal", access: "login", note: "每个版本的模型 / 推理强度 / 轨迹检测与 ELO", x: 900, y: 450 },
@@ -82,7 +95,7 @@ export const EDGES: SiteEdge[] = [
   { from: "home", to: "contests", label: "全部比赛" },
   { from: "home", to: "matches", label: "观看回放 · 近期对战“全部”" },
   { from: "home", to: "replay", label: "近期对战行" },
-  { from: "home", to: "leaderboard", label: "KDA 王 / 抢劫王（?tab=）" },
+  { from: "home", to: "leaderboard", label: "KDA 王 / 抢劫王（?view=kda / robbed）" },
   { from: "home", to: "auth", label: "创建账号", when: "guest" },
   { from: "home", to: "files", label: "C++ 示例 ZIP" },
 
@@ -95,8 +108,8 @@ export const EDGES: SiteEdge[] = [
   { from: "replay", to: "replay", label: "近期对战" },
   { from: "replay", to: "files", label: "下载回放" },
 
-  { from: "leaderboard", to: "bot", label: "ELO 总榜行 · 子榜行" },
-  { from: "leaderboard", to: "contest", label: "#0 Tier · 去 #0 提交参评" },
+  { from: "leaderboard", to: "bot", label: "ELO 总榜行 · Tier · 胜率矩阵行列标题 · 子榜行" },
+  { from: "leaderboard", to: "contest", label: "#0 比赛页的 Tier · Tier 回放 · 去 #0 提交参评" },
 
   { from: "bot", to: "bots", label: "返回我的 Bots", when: "owner" },
   { from: "bot", to: "leaderboard", label: "返回排行", when: "other" },
