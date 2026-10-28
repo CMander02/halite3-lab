@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Menu, Logout, User as UserIcon, Code, Login, Ship, Human, Shield } from "@nsmr/pixelart-react";
 import { api, useApi } from "@/lib/api";
 import { interceptLinks, navigate, useLocation } from "@/lib/router";
+import { NAV, USER_MENU } from "@/lib/sitemap";
 import type { Health, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ErrorBox, Loading } from "@/components/pixel";
@@ -30,15 +31,9 @@ const Me = lazy(() => import("@/pages/Me"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const Contests = lazy(() => import("@/pages/Contests"));
 const BotDetail = lazy(() => import("@/pages/BotDetail"));
+const SiteMap = lazy(() => import("@/pages/SiteMap"));
 
-const NAV = [
-  { href: "/", label: "概览", code: "HOME" },
-  { href: "/matches", label: "对战", code: "MATCH" },
-  { href: "/contests", label: "比赛", code: "CUP" },
-  { href: "/leaderboard", label: "排行", code: "RANK" },
-  { href: "/bots", label: "Bots", code: "BOTS" },
-  { href: "/tests", label: "测试", code: "TEST" },
-];
+const MENU_ICON = { "/me": Human, "/admin": Shield, "/settings": UserIcon, "/bots": Code } as const;
 
 export type Session = { user: User | null; refresh: () => Promise<void> };
 
@@ -70,20 +65,14 @@ function UserMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
           <div className="text-ink-3">@{user.username}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => navigate("/me")}>
-          <Human size={16} /> 我的主页
-        </DropdownMenuItem>
-        {user.is_admin && (
-          <DropdownMenuItem onSelect={() => navigate("/admin")}>
-            <Shield size={16} /> 管理后台
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onSelect={() => navigate("/settings")}>
-          <UserIcon size={16} /> 账号与头像
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate("/bots")}>
-          <Code size={16} /> 我的 Bots
-        </DropdownMenuItem>
+        {USER_MENU.filter((item) => !item.admin || user.is_admin).map((item) => {
+          const Icon = MENU_ICON[item.href as keyof typeof MENU_ICON];
+          return (
+            <DropdownMenuItem key={item.href} onSelect={() => navigate(item.href)}>
+              <Icon size={16} /> {item.label}
+            </DropdownMenuItem>
+          );
+        })}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout} className="text-bad">
           <Logout size={16} /> 退出登录
@@ -127,6 +116,7 @@ export default function App() {
   else if (path === "/tests" || jobId) page = <Tests user={user} jobId={jobId} />;
   else if (path === "/me") page = <Me user={user} />;
   else if (path === "/admin") page = <Admin user={user} />;
+  else if (path === "/sitemap") page = <SiteMap />;
   else if (path === "/settings") page = <Account user={user} onChange={refresh} />;
   else if (path === "/login" || path === "/register") page = <Auth mode={path === "/register" ? "register" : "login"} onDone={refresh} />;
   else
