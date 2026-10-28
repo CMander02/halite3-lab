@@ -167,3 +167,43 @@ def board(db, include_hidden=False):
         else:
             entry["rank"] = None
     return entries if include_hidden else [e for e in entries if e["listed"] or e["builtin"]]
+
+
+def matchup_matrix(db, mode=None):
+    """Public listed versions, with observed seat-pair results (ties count half).
+
+    Keep the roster across mode filters so a missing comparison remains visible.
+    Repeated opponent seats each contribute one comparison; self pairs do not.
+    No prior, ELO prediction or model correction enters these observed rates.
+    """
+    entries = board(db)
+    allowed = {e["version_id"] for e in entries}
+    cells = {}
+    query = "SELECT seat_json,result_json FROM matches WHERE status='complete' AND public=1 AND result_json IS NOT NULL"
+    params = []
+    if mode is not None:
+        query += " AND mode=?"
+        params.append(mode)
+    for row in db.execute(query, params):
+        seats = json.loads(row["seat_json"])
+        stats = json.loads(row["result_json"]).get("stats", {})
+        ranks = [(s["id"], stats.get(str(i), {}).get("rank")) for i, s in enumerate(seats)]
+        ranks = [(vid, rank) for vid, rank in ranks if vid in allowed and rank is not None]
+        for i, (a, ra) in enumerate(ranks):
+            for b, rb in ranks[i + 1:]:
+                if a == b:
+                    continue
+                for x, y, rx, ry in ((a, b, ra, rb), (b, a, rb, ra)):
+                    cell = cells.setdefault(x, {}).setdefault(y, {"wins": 0, "draws": 0, "games": 0})
+                    cell["games"] += 1
+                    cell["wins"] += rx < ry
+                    cell["draws"] += rx == ry
+    for opponents in cells.values():
+        for cell in opponents.values():
+            cell["losses"] = cell["games"] - cell["wins"] - cell["draws"]
+            cell["win_rate"] = (cell["wins"] + cell["draws"] / 2) / cell["games"]
+    # Only public identity fields; declarations, detection and traces stay private.
+    keys = ("version_id", "bot_id", "bot_name", "version", "author", "author_id", "builtin")
+    roster = [{**{k: e[k] for k in keys}, "model": e["attribution"]["model"]["value"] if e["attribution"] else None}
+              for e in entries]
+    return {"entries": roster, "cells": cells, "mode": mode}

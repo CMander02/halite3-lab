@@ -190,8 +190,13 @@ function NodePanel({ id }: { id: string | null }) {
         {n.access && <Tag>{ACCESS[n.access]}</Tag>}
         {nav >= 0 && <Tag className="border-ink bg-ink text-paper">页头第 {nav + 1} 项</Tag>}
         {menu.includes(n.id) && <Tag className="border-good bg-good text-white">账号菜单</Tag>}
-        {n.tabs && <Tag>tab：{n.tabs.join(" / ")}（不在 URL 里）</Tag>}
+        {n.tabs && <Tag>tab：{n.tabs.join(" / ")}（{n.views ? "可直接链接" : "不在 URL 里"}）</Tag>}
       </div>
+      {n.views && (
+        <nav aria-label={`${n.label}视图链接`} className="mb-4 flex flex-wrap gap-2">
+          {n.views.map((view) => <a key={view.href} href={view.href} className="border border-line px-2 py-1 text-blue hover:border-ink">{view.label}</a>)}
+        </nav>
+      )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
         <div>
           <div className="eyebrow mb-1">能去 · {out.length}</div>

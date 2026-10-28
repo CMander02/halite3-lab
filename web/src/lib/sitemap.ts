@@ -1,3 +1,7 @@
+import { BOARD_VIEWS } from "./leaderboard";
+
+const BOARD_LABELS = ["ELO 总榜", "Tier", "胜率矩阵", "KDA", "抢劫", "搬运", "视野", "采矿"];
+
 // Site map: which page (type) links to which. The header and the user menu read their
 // items from here, so the /sitemap page always shows the real navigation order. The
 // in-page edges are written by hand from the page sources — update them with the page.
@@ -29,8 +33,9 @@ export type SiteNode = {
   zone: Zone;
   /** who can see the page's content */
   access?: "login" | "admin";
-  /** in-page tabs; none of them is in the URL */
+  /** in-page tabs; views provides direct links when supported */
   tabs?: string[];
+  views?: { label: string; href: string }[];
   note: string;
   x: number;
   y: number;
@@ -47,7 +52,12 @@ export const NODES: SiteNode[] = [
   { id: "home", label: "概览", route: "/", zone: "public", note: "首页：统计、近期对战、Tier 前 5、规则摘要、起航流程（Bots → 测试 → 排行）", x: 120, y: 90 },
   { id: "matches", label: "对战列表", route: "/matches", zone: "public", note: "全部公开对局 + 自己的私人对局，可按模式 / 版本筛选", x: 120, y: 330 },
   { id: "replay", label: "回放", route: "/matches/:id", zone: "public", tabs: ["战况", "数据", "近期"], note: "单局回放；返回按钮固定回到 /matches", x: 120, y: 570 },
-  { id: "leaderboard", label: "排行", route: "/leaderboard", zone: "public", tabs: ["ELO 总榜", "Tier", "KDA", "抢劫", "搬运", "视野", "采矿"], note: "全局 ELO（全部公开对局）+ Tier（只来自 #0 的 12 场）+ 子榜", x: 380, y: 210 },
+  { id: "leaderboard", label: "排行", route: "/leaderboard", zone: "public", tabs: BOARD_LABELS,
+    views: [
+      ...BOARD_VIEWS.map((view, i) => ({ label: BOARD_LABELS[i], href: `/leaderboard?view=${view}` })),
+      ...[["2", "1v1"], ["4", "4 人"], ["8", "8 人"]].map(([mode, label]) => ({ label: `胜率矩阵 · ${label}`, href: `/leaderboard?view=matrix&mode=${mode}` })),
+    ],
+    note: "全局 ELO（全部公开对局）+ Tier（#0 的 12 场）+ 对战胜率矩阵 + 子榜。各视图可直接链接，人数和模型 / 推理 / 平台筛选保存在 URL 中。", x: 380, y: 210 },
   { id: "bot", label: "Bot 详情", route: "/bots/:id", zone: "public", note: "任何人的 Bot 公开页：版本、ELO 走势、参加过的比赛", x: 380, y: 450 },
   { id: "contests", label: "比赛列表", route: "/contests", zone: "contest", note: "按状态分组的比赛卡片（#0 常驻测试赛也在这里）", x: 640, y: 90 },
   { id: "contest", label: "比赛详情", route: "/contests/:slug", zone: "contest", tabs: ["概览", "排行", "我的提交", "管理"], note: "题面、地图、靶子、时间线、规则；排行 / 我的提交 / 管理 是页内 tab", x: 640, y: 330 },
@@ -78,7 +88,7 @@ export const EDGES: SiteEdge[] = [
   { from: "home", to: "auth", label: "创建账号", when: "guest" },
   { from: "home", to: "matches", label: "观看回放 · 近期对战“全部”" },
   { from: "home", to: "replay", label: "近期对战行" },
-  { from: "home", to: "leaderboard", label: "Tier 榜 · KDA 王 / 抢劫王 · 起航流程③" },
+  { from: "home", to: "leaderboard", label: "Tier 榜（?view=tier）· KDA 王 / 抢劫王（?view=kda / robbed）· 起航流程③" },
   { from: "home", to: "tests", label: "起航流程②" },
   { from: "home", to: "files", label: "C++ 示例 ZIP" },
 
@@ -89,7 +99,7 @@ export const EDGES: SiteEdge[] = [
   { from: "replay", to: "replay", label: "近期对战" },
   { from: "replay", to: "files", label: "下载回放" },
 
-  { from: "leaderboard", to: "bot", label: "ELO 总榜行" },
+  { from: "leaderboard", to: "bot", label: "ELO 总榜行 · 胜率矩阵行列标题" },
   { from: "leaderboard", to: "matches", label: "Tier 卡片 · 完整排名“回放”（?version=）" },
   { from: "leaderboard", to: "bots", label: "提交版本参评" },
 

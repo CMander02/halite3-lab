@@ -356,6 +356,12 @@ class BackendTest(unittest.TestCase):
                     db.execute("INSERT INTO match_players(match_id,seat,version_id,rank,score) VALUES(?,?,?,?,?)", (game["id"], i, s["id"], stats[str(i)]["rank"], 100))
         _cache["key"] = None
         self.assertIn(vid, [e["version_id"] for e in self.a.get("/api/leaderboard").json()["entries"]])
+        tier_entry = next(e for e in self.a.get("/api/leaderboard").json()["entries"] if e["version_id"] == vid)
+        self.assertTrue(tier_entry["bot_id"])
+        for changes in ({"listed": False}, {"listed": True, "archived": True}):
+            self.a.patch(f"/api/versions/{vid}", json=changes)
+            self.assertNotIn(vid, [e["version_id"] for e in self.a.get("/api/leaderboard").json()["entries"]])
+        self.a.patch(f"/api/versions/{vid}", json={"listed": True, "archived": False})
         self.assertIn(vid, [e["version_id"] for e in self.a.get("/api/leaderboard/elo").json()["entries"]])
         self.legacy_python(vid)
         for path in ("/api/leaderboard", "/api/leaderboard/elo", "/api/leaderboard/stats"):
@@ -683,6 +689,56 @@ class BackendTest(unittest.TestCase):
         self.b.patch(f"/api/versions/{strong}", json={"listed": False})
         ids = [e["version_id"] for e in self.a.get("/api/leaderboard/elo").json()["entries"]]
         self.assertNotIn(strong, ids)
+
+    def test_public_matchup_matrix_direction_ties_modes_and_visibility(self):
+        from backend.rating import _cache
+        self.account(self.a, "alice")
+        _, a = self.upload(self.a, name="alpha")
+        _, b = self.upload(self.a, name="beta")
+        _, c = self.upload(self.a, name="gamma")
+        _, private = self.upload(self.a, name="private")
+        with connect() as db:
+            db.execute("INSERT INTO jobs(id,owner_id,name,kind,config_json,created_at) VALUES('matrix-job',NULL,'matrix','private','{}',0)")
+            def game(name, ids, ranks, mode=2, public=1, status="complete"):
+                stats = {str(i): {"rank": rank, "score": 0} for i, rank in enumerate(ranks)}
+                db.execute("INSERT INTO matches(id,job_id,mode,seed,seat_json,status,public,result_json,created_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                           (name, "matrix-job", mode, 11, json.dumps([{"id": vid} for vid in ids]), status, public, json.dumps({"stats": stats}), 0, 100))
+            game("win", [a, b], [1, 2])
+            game("loss", [b, a], [1, 2])
+            game("tie", [a, b], [1, 1])
+            game("multi", [a, b, b, "builtin-baseline-v1"], [1, 2, 2, 4], mode=4)
+            game("other", [c, "builtin-baseline-v1"], [1, 2])
+            game("private", [private, a], [1, 2], public=0)
+            game("unpublished", [private, b], [1, 2], public=0)
+            game("failed", [private, b], [1, 2], status="failed")
+            game("queued", [private, b], [1, 2], status="queued")
+        _cache["key"] = None
+        response = self.b.get("/api/leaderboard/matrix")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        roster = {e["version_id"] for e in data["entries"]}
+        self.assertEqual(roster, {a, b, c, "builtin-baseline-v1"})
+        self.assertEqual(data["cells"][a][b], {"wins": 3, "draws": 1, "losses": 1, "games": 5, "win_rate": 0.7})
+        self.assertAlmostEqual(data["cells"][b][a]["win_rate"], 0.3)
+        self.assertNotIn(a, data["cells"][a])
+        self.assertNotIn(b, data["cells"][b])
+        self.assertNotIn(c, data["cells"][a])
+        self.assertNotIn(private, json.dumps(data))
+        self.assertNotIn("detection", json.dumps(data))
+        duel = self.b.get("/api/leaderboard/matrix?mode=2").json()
+        self.assertEqual(duel["cells"][a][b]["win_rate"], 0.5)
+        self.assertEqual(duel["cells"][a][b]["games"], 3)
+        eight = self.b.get("/api/leaderboard/matrix?mode=8").json()
+        self.assertEqual(eight["cells"], {})
+        self.assertEqual({e["version_id"] for e in eight["entries"]}, roster)
+        for mode in ("0", "3", "nope"):
+            self.assertEqual(self.b.get(f"/api/leaderboard/matrix?mode={mode}").status_code, 422)
+        for changes in ({"listed": False}, {"listed": True, "archived": True}):
+            self.a.patch(f"/api/versions/{b}", json=changes)
+            hidden = self.b.get("/api/leaderboard/matrix").json()
+            self.assertNotIn(b, json.dumps(hidden))
+        self.legacy_python(c)
+        self.assertNotIn(c, json.dumps(self.b.get("/api/leaderboard/matrix").json()))
 
     def test_version_archive_and_default_version(self):
         self.account(self.a, "alice")

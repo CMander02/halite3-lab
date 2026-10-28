@@ -3,7 +3,7 @@ title: 2026-10-26-cpp-only-competition
 model: GPT-6 (Codex)
 effort: high
 created: 2026-10-26 05:29:50
-last_modified: 2026-10-26 05:29:50
+last_modified: 2026-10-28 09:25:52
 abstract: Restrict user uploads and competition entries to C++17 while retaining historical records and immutable benchmark opponents.
 lifecycle: implemented
 class: bug-fix
@@ -40,3 +40,7 @@ Users with only Python versions must upload a new C++17 version. Historical queu
 ## Testing
 
 The backend suite covers rejected Python and mixed archives, accepted C++ extensions/projects, direct entry points, legacy defaults and caches, retry restrictions, leaderboard filtering, and retained history. Real sandboxed matches cover a single-file C++ example against baseline and a multi-unit C++ ZIP against raider. Browser checks cover upload rejection/success, legacy controls, test selection, account examples, admin visibility, match/replay pages, and desktop/mobile layouts.
+
+## Related
+
+[Leaderboard views and matchups](../feature/2026-10-28-leaderboard-views-and-matchups.md) extends public visibility checks to the observed matchup matrix and filters hidden/archived versions from Tier.

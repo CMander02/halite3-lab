@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Trophy, Zap, Briefcase, Truck, Eye, ArrowRight, Scale, List } from "@nsmr/pixelart-react";
 import { glyphIcon } from "@/components/glyphs";
-import type { BoardEntry, CatalogKind, EloEntry, LeaderEntry } from "@/lib/types";
+import type { BoardEntry, CatalogKind, EloEntry, LeaderEntry, MatchupMatrix } from "@/lib/types";
 import { KIND_LABEL, SETUP_KINDS, SetupCells, correctionLabel, entry, useCatalog } from "@/components/ModelBadge";
 import { compact, number, percent, useApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, ErrorBox, Loading, PageHead, Panel, TierBadge } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
+import { BotIcon } from "@/components/BotIcon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { navigate, useLocation } from "@/lib/router";
+import { leaderboardHref, leaderboardState } from "@/lib/leaderboard";
 import { MetricBars } from "@/components/charts";
 
 const Pickaxe = glyphIcon("pickaxe");
@@ -98,10 +102,18 @@ const TIERS = [
   { tier: "C", rule: "< 25%" },
 ];
 
-function Who({ e }: { e: { author_id: string | null; author: string | null; bot_name: string; version: string; builtin?: number } }) {
+type Identity = { author_id: string | null; author: string | null; bot_name: string; version: string; bot_id?: string; builtin?: number; model?: string | null; attribution?: { model: { value: string } } | null };
+
+function fullName(e: Identity) {
+  return `${e.bot_name} v${e.version} · ${e.builtin ? "平台基准" : e.author || "未知作者"}`;
+}
+
+function Who({ e }: { e: Identity }) {
+  const catalog = useCatalog();
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span className="flex min-w-0 items-center gap-2" title={fullName(e)}>
       <UserAvatar id={e.author_id} name={e.author || "平台基准"} size="sm" />
+      {e.bot_id && <BotIcon id={e.bot_id} model={e.model || e.attribution?.model.value} catalog={catalog} className="size-6" />}
       <span className="min-w-0">
         <span className="block truncate">
           {e.bot_name} <span className="text-ink-3">v{e.version}</span>
@@ -194,9 +206,8 @@ function SetupFilters({ entries, value, onChange, catalog }: { entries: EloEntry
   );
 }
 
-function EloBoard({ entries }: { entries: EloEntry[] }) {
+function EloBoard({ entries, filter, setFilter }: { entries: EloEntry[]; filter: Record<CatalogKind, string>; setFilter: (v: Record<CatalogKind, string>) => void }) {
   const catalog = useCatalog();
-  const [filter, setFilter] = useState<Record<CatalogKind, string>>({ model: ALL, effort: ALL, harness: ALL });
   const active = SETUP_KINDS.some((k) => filter[k]);
   // Baselines have no setup: keep them as reference rows unless a filter is active.
   const shown = entries.filter((e) => (e.attribution ? SETUP_KINDS.every((k) => !filter[k] || e.attribution![k].value === filter[k]) : !active));
@@ -254,18 +265,109 @@ function EloBoard({ entries }: { entries: EloEntry[] }) {
   );
 }
 
+function ModeFilter({ mode, onChange }: { mode: string; onChange: (mode: string) => void }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="text-ink-2">人数模式</span>
+      <select aria-label="人数模式" value={mode} onChange={(e) => onChange(e.target.value)} className="h-8 cursor-pointer border border-line bg-paper-2 px-2">
+        <option value="">全部模式</option>
+        <option value="2">1v1</option>
+        <option value="4">4 人</option>
+        <option value="8">8 人</option>
+      </select>
+    </label>
+  );
+}
+
+function WinMatrix({ data }: { data: MatchupMatrix }) {
+  const catalog = useCatalog();
+  const [selected, setSelected] = useState<{ row: string; col: string } | null>(null);
+  const { entries, cells } = data;
+  if (!entries.length) return <Empty title="暂无公开对战数据">完成公开评测后，这里显示所有在榜版本之间的对战胜率。</Empty>;
+  const selectedRow = entries.find((e) => e.version_id === selected?.row);
+  const selectedCol = entries.find((e) => e.version_id === selected?.col);
+  const selectedCell = selected ? cells[selected.row]?.[selected.col] : null;
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <p id="matrix-help" className="m-0 text-ink-2">行 Bot 对列 Bot 的胜率 =（胜 + 平 × 0.5）÷ 比较次数。多人局按最终名次逐对座位比较，同版本不比较；重复座位分别计数。仅统计已完成的公开对局，无 ELO 修正。点击格子查看详情。</p>
+      <div className="flex flex-wrap gap-3 text-ink-3">
+        <span className="bg-blue-100 px-2">&gt; 50%</span><span className="bg-paper px-2">= 50%</span><span className="bg-bad/10 px-2">&lt; 50%</span><span>未交手：无比较记录</span>
+      </div>
+      <div className="max-h-[70vh] overflow-auto border border-line" role="region" aria-label="胜率矩阵，可横向及纵向滚动" tabIndex={0}>
+        <table className="w-max border-separate border-spacing-0 text-sm" aria-describedby="matrix-help">
+          <caption className="sr-only">公开在榜 Bot 版本之间的胜率矩阵，行对列，按修正后 ELO 排序，包含平台基准。</caption>
+          <thead className="sticky top-0 z-20">
+            <tr>
+              <th className="sticky left-0 z-30 w-44 border-r border-b border-line bg-paper px-3 py-2 text-left">行 ↓ 对列 →</th>
+              {entries.map((e, i) => (
+                <th key={e.version_id} scope="col" className="w-28 max-w-28 border-r border-b border-line bg-paper px-2 py-2 font-normal">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <a href={`/bots/${e.bot_id}`} className="flex flex-col items-center gap-1 hover:text-blue" aria-label={fullName(e)}>
+                        <BotIcon id={e.bot_id} model={e.model} catalog={catalog} className="size-6" />
+                        <span className="block w-full truncate">{i + 1}. {e.bot_name}</span>
+                        <span className="block w-full truncate text-ink-3">v{e.version}</span>
+                      </a>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs break-words">{fullName(e)}</TooltipContent>
+                  </Tooltip>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((row, i) => (
+              <tr key={row.version_id}>
+                <th scope="row" className="sticky left-0 z-10 w-44 max-w-44 border-r border-b border-line bg-paper-2 px-2 py-2 text-left font-normal">
+                  <a href={`/bots/${row.bot_id}`} className="flex min-w-0 items-center gap-2 hover:text-blue" aria-label={fullName(row)}>
+                    <span className="num text-ink-3">{i + 1}</span><Who e={row} />
+                  </a>
+                </th>
+                {entries.map((col) => {
+                  const cell = cells[row.version_id]?.[col.version_id];
+                  const self = row.version_id === col.version_id;
+                  const detail = `${fullName(row)} 对 ${fullName(col)}：${self ? "同一版本" : cell ? `${percent(cell.win_rate, 1)}，${cell.wins} 胜 / ${cell.draws} 平 / ${cell.losses} 负，${cell.games} 次比较` : "未交手"}`;
+                  return (
+                    <td key={col.version_id} className="border-r border-b border-line p-0 text-center">
+                      {self ? <span className="block bg-paper py-3 text-ink-3" aria-label="同一版本">—</span> : (
+                        <button type="button" title={detail} aria-label={detail} aria-pressed={selected?.row === row.version_id && selected?.col === col.version_id}
+                          onClick={() => setSelected({ row: row.version_id, col: col.version_id })}
+                          className={cn("flex min-h-14 w-full cursor-pointer flex-col items-center justify-center px-2 focus-visible:outline-2 focus-visible:outline-blue aria-pressed:ring-2 aria-pressed:ring-inset aria-pressed:ring-blue", !cell ? "text-ink-3" : cell.win_rate > 0.5 ? "bg-blue-100 text-ink" : cell.win_rate < 0.5 ? "bg-bad/10 text-ink" : "bg-paper text-ink")}>
+                          <span className="num">{cell ? percent(cell.win_rate, 1) : "未交手"}</span>
+                          {cell && <span className="text-xs text-ink-2">{cell.games} 次</span>}
+                        </button>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="m-0 min-h-6 break-words text-ink-2" aria-live="polite">
+        {selectedRow && selectedCol ? `${fullName(selectedRow)} 对 ${fullName(selectedCol)}：${selectedCell ? `${percent(selectedCell.win_rate, 1)}，${selectedCell.wins} 胜 / ${selectedCell.draws} 平 / ${selectedCell.losses} 负，共 ${selectedCell.games} 次比较。` : "当前人数模式下未交手。"}` : "悬停或聚焦名称查看全名；矩阵可滚动，行列标题保持可见。"}
+      </p>
+    </div>
+  );
+}
+
 export default function Leaderboard() {
+  const { search } = useLocation();
+  const { view, mode, filter } = leaderboardState(search);
+  const update = (changes: Record<string, string>) => navigate(leaderboardHref(search, changes));
   const elo = useApi<{ entries: EloEntry[]; anchor: number }>("/leaderboard/elo");
   const tiers = useApi<{ entries: LeaderEntry[]; season: string; required_games: number }>("/leaderboard");
-  const [mode, setMode] = useState("");
   const stats = useApi<{ entries: BoardEntry[] }>(`/leaderboard/stats${mode ? `?mode=${mode}` : ""}`);
-  const entries = tiers.data?.entries || [];
+  const matrix = useApi<MatchupMatrix>(view === "matrix" ? `/leaderboard/matrix${mode ? `?mode=${mode}` : ""}` : null);
+  const rated = new Map((elo.data?.entries || []).map((e) => [e.version_id, e]));
+  const entries = (tiers.data?.entries || []).map((e) => ({ ...e, model: rated.get(e.version_id)?.attribution?.model.value }));
 
   return (
     <>
       <PageHead
         eyebrow="排行榜"
-        title="ELO、Tier 与子榜"
+        title="ELO、Tier 与对战胜率"
         description="ELO 总榜按修正后的 ELO 排名，用来平衡不同模型和推理强度；Tier 来自 12 场固定基准评测；子榜统计全部公开对局。"
         action={
           <Button asChild>
@@ -275,8 +377,9 @@ export default function Leaderboard() {
           </Button>
         }
       />
-      <ErrorBox message={tiers.error || stats.error || elo.error} />
-      <Tabs defaultValue="elo" className="gap-6">
+      <p className="mt-0 mb-4 text-ink-3"><a href={leaderboardHref(search, { view })} className="text-blue hover:underline">当前视图链接</a> · 可复制链接分享当前榜单、人数模式和筛选条件。</p>
+      <ErrorBox message={tiers.error || stats.error || elo.error || matrix.error} />
+      <Tabs value={view} onValueChange={(value) => update({ view: value })} className="min-w-0 gap-6">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="h-10">
             <TabsTrigger value="elo" className="px-4">
@@ -285,6 +388,7 @@ export default function Leaderboard() {
             <TabsTrigger value="tier" className="px-4">
               <Trophy size={14} /> Tier
             </TabsTrigger>
+            <TabsTrigger value="matrix" className="px-4">胜率矩阵</TabsTrigger>
             {BOARDS.map(({ key, label, icon: Icon }) => (
               <TabsTrigger key={key} value={key} className="px-4">
                 <Icon size={14} /> {label}
@@ -294,7 +398,7 @@ export default function Leaderboard() {
         </div>
 
         <TabsContent value="elo" className="flex flex-col gap-4">
-          <div className="pixel-frame overflow-x-auto p-0">{elo.loading ? <Loading /> : <EloBoard entries={elo.data?.entries || []} />}</div>
+          <div className="pixel-frame overflow-x-auto p-0">{elo.loading ? <Loading /> : <EloBoard entries={elo.data?.entries || []} filter={filter} setFilter={(next) => update(next)} />}</div>
           <p className="m-0 max-w-[880px] text-ink-3">
             原始 ELO：对全部公开对局做 Bradley–Terry 极大似然拟合（每局按名次两两比较，多人局按 1/(n−1) 加权，另加对 1500 锚点的一胜一负先验），与比赛顺序无关。
             修正后 ELO = 原始 ELO − 模型修正 − 推理强度修正 − 平台修正，三项分列在对应列下方；强模型、强推理扣分更多。用户声明与轨迹检测不一致时按修正更大的一方计算，管理员可以人工确认。平台基准不做修正、不参与排名。
@@ -315,16 +419,18 @@ export default function Leaderboard() {
                         <span className="font-pixel text-[36px] leading-[36px]">{tier}</span>
                         <span className="text-[13px] opacity-80">{rule}</span>
                       </div>
-                      <div className="flex flex-1 flex-wrap items-center gap-2 p-2">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 p-2">
                         {row.length ? (
                           row.map((e) => (
-                            <a key={e.version_id} href={`/matches?version=${e.version_id}`} className="flex items-center gap-2 border border-line bg-paper-2 py-1 pr-3 pl-1 hover:border-ink">
-                              <UserAvatar id={e.author_id} name={e.author} size="sm" />
-                              <span>
-                                {e.bot_name} <span className="text-ink-3">v{e.version}</span>
-                              </span>
-                              <span className="num text-blue">{(e.win_rate * 100).toFixed(0)}%</span>
-                            </a>
+                            <Tooltip key={e.version_id}>
+                              <TooltipTrigger asChild>
+                                <a href={`/matches?version=${e.version_id}`} className="flex w-64 max-w-full min-w-0 items-center gap-2 border border-line bg-paper-2 py-2 pr-2 pl-2 hover:border-ink" aria-label={`${fullName(e)}，胜率 ${percent(e.win_rate)}`}>
+                                  <Who e={e} />
+                                  <span className="num ml-auto shrink-0 text-blue">{percent(e.win_rate)}</span>
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs break-words">{fullName(e)} · 胜率 {percent(e.win_rate)}</TooltipContent>
+                            </Tooltip>
                           ))
                         ) : (
                           <span className="px-2 text-ink-3">—</span>
@@ -383,21 +489,15 @@ export default function Leaderboard() {
           )}
         </TabsContent>
 
+        <TabsContent value="matrix" className="flex min-w-0 flex-col gap-4">
+          <ModeFilter mode={mode} onChange={(value) => update({ mode: value })} />
+          <div className="pixel-frame min-w-0 p-3 sm:p-4">{matrix.loading ? <Loading /> : matrix.data ? <WinMatrix key={mode} data={matrix.data} /> : null}</div>
+        </TabsContent>
+
         {BOARDS.map((board) => (
           <TabsContent key={board.key} value={board.key} className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex border border-ink">
-                {[
-                  ["", "全部模式"],
-                  ["2", "1v1"],
-                  ["4", "4 人"],
-                  ["8", "8 人"],
-                ].map(([key, label]) => (
-                  <button key={key} className={cn("h-8 cursor-pointer px-3", mode === key ? "bg-ink text-paper" : "hover:bg-blue-50")} onClick={() => setMode(key)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <ModeFilter mode={mode} onChange={(value) => update({ mode: value })} />
               <span className="text-ink-2">按 Bot 版本聚合 · 仅公开对局</span>
             </div>
             <div className="pixel-frame p-4">{stats.loading ? <Loading /> : <SubBoard board={board} entries={stats.data?.entries || []} />}</div>

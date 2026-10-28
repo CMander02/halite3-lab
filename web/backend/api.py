@@ -775,7 +775,7 @@ def match_logs(match_id: str, request: Request):
 def leaderboard():
     with connect() as db:
         rows = db.execute(
-            "SELECT j.*,v.version,b.name AS bot_name,u.display_name AS author FROM jobs j JOIN versions v ON v.id=j.candidate_id JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=j.owner_id WHERE j.kind='ranked' AND v.language='cpp' ORDER BY j.created_at DESC"
+            "SELECT j.*,v.version,b.id AS bot_id,b.name AS bot_name,u.display_name AS author FROM jobs j JOIN versions v ON v.id=j.candidate_id JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=j.owner_id WHERE j.kind='ranked' AND v.language='cpp' AND v.listed=1 AND v.archived=0 ORDER BY j.created_at DESC"
         ).fetchall()
         result = []
         for row in rows:
@@ -802,6 +802,7 @@ def leaderboard():
             result.append(
                 {
                     "version_id": row["candidate_id"],
+                    "bot_id": row["bot_id"],
                     "bot_name": row["bot_name"],
                     "version": row["version"],
                     "author": row["author"],

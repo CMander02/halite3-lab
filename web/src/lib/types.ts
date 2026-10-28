@@ -153,6 +153,7 @@ export interface Health {
 }
 export interface LeaderEntry {
   version_id: string;
+  bot_id: string;
   author_id: string | null;
   bot_name: string;
   version: string;
@@ -163,6 +164,28 @@ export interface LeaderEntry {
   mean_score: number;
   tier: string;
   job_id: string;
+}
+export interface MatrixEntry {
+  version_id: string;
+  bot_id: string;
+  bot_name: string;
+  version: string;
+  author: string | null;
+  author_id: string | null;
+  builtin: number;
+  model: string | null;
+}
+export interface MatchupCell {
+  wins: number;
+  draws: number;
+  losses: number;
+  games: number;
+  win_rate: number;
+}
+export interface MatchupMatrix {
+  entries: MatrixEntry[];
+  cells: Record<string, Record<string, MatchupCell>>;
+  mode: number | null;
 }
 export interface Ship {
   x: number;
