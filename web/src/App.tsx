@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Menu, Logout, User as UserIcon, Code, Login, Ship, Human, Shield } from "@nsmr/pixelart-react";
+import { Menu, Logout, User as UserIcon, Code, Login, Ship, Human, Shield, Tournament, ChevronDown } from "@nsmr/pixelart-react";
 import { api, useApi } from "@/lib/api";
 import { interceptLinks, navigate, useLocation } from "@/lib/router";
-import { NAV, USER_MENU } from "@/lib/sitemap";
+import { NAV, PRACTICE, USER_MENU } from "@/lib/sitemap";
 import type { Health, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ErrorBox, Loading } from "@/components/pixel";
@@ -33,7 +33,7 @@ const Contests = lazy(() => import("@/pages/Contests"));
 const BotDetail = lazy(() => import("@/pages/BotDetail"));
 const SiteMap = lazy(() => import("@/pages/SiteMap"));
 
-const MENU_ICON = { "/me": Human, "/admin": Shield, "/settings": UserIcon, "/bots": Code } as const;
+const MENU_ICON = { "/me": Human, "/bots": Code, "/tests": Tournament, "/settings": UserIcon, "/admin": Shield } as const;
 
 export type Session = { user: User | null; refresh: () => Promise<void> };
 
@@ -58,6 +58,9 @@ function UserMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
       <DropdownMenuTrigger className="flex cursor-pointer items-center gap-2 outline-none" aria-label="账号菜单">
         <UserAvatar id={user.id} name={user.display_name} version={user.avatar_version} />
         <span className="hidden max-w-[120px] truncate lg:inline">{user.display_name}</span>
+        <span className="hidden items-center sm:flex">
+          我的 <ChevronDown size={16} />
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">
         <DropdownMenuLabel className="font-normal">
@@ -102,7 +105,7 @@ export default function App() {
 
   const matchId = path.match(/^\/matches\/([^/]+)$/)?.[1];
   const jobId = path.match(/^\/tests\/([^/]+)$/)?.[1];
-  const contestSlug = path.match(/^\/contests\/([^/]+)$/)?.[1];
+  const [, contestSlug, contestTab] = path.match(/^\/contests\/([^/]+)(?:\/([^/]+))?$/) || [];
   const botId = path.match(/^\/bots\/([^/]+)$/)?.[1];
   const refresh = async () => void (await session.refresh());
   let page;
@@ -112,7 +115,7 @@ export default function App() {
   else if (path === "/leaderboard") page = <Leaderboard />;
   else if (path === "/bots") page = <Bots user={user} />;
   else if (botId) page = <BotDetail key={botId} id={botId} user={user} />;
-  else if (path === "/contests" || contestSlug) page = <Contests key={contestSlug || ""} user={user} slug={contestSlug} />;
+  else if (path === "/contests" || contestSlug) page = <Contests key={contestSlug || ""} user={user} slug={contestSlug} tab={contestTab} />;
   else if (path === "/tests" || jobId) page = <Tests user={user} jobId={jobId} />;
   else if (path === "/me") page = <Me user={user} />;
   else if (path === "/admin") page = <Admin user={user} />;
@@ -130,7 +133,7 @@ export default function App() {
       </div>
     );
   const fullBleed = Boolean(matchId) || path === "/";
-  const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const active = (href: string) => path === href || path.startsWith(href + "/");
   const online = health.data?.runner_online;
 
   return (
@@ -183,7 +186,7 @@ export default function App() {
                     <span className="text-blue">&gt;_</span> 航行菜单
                   </SheetTitle>
                   <nav className="flex flex-col px-5 py-4" aria-label="移动端导航">
-                    {NAV.map((item, i) => (
+                    {[{ href: "/", label: "概览", code: "HOME" }, ...NAV].map((item, i) => (
                       <a
                         key={item.href}
                         href={item.href}
@@ -208,14 +211,14 @@ export default function App() {
                             <span className="text-ink-3">账号与头像 &gt;</span>
                           </span>
                         </a>
-                        <a href="/me" className="flex items-center gap-2 border border-line p-3">
-                          <Human size={16} /> 我的主页 · 提交与排名
-                        </a>
-                        {user.is_admin && (
-                          <a href="/admin" className="flex items-center gap-2 border border-line p-3">
-                            <Shield size={16} /> 管理后台
-                          </a>
-                        )}
+                        {USER_MENU.filter((item) => item.href !== "/settings" && (!item.admin || user.is_admin)).map((item) => {
+                          const Icon = MENU_ICON[item.href as keyof typeof MENU_ICON];
+                          return (
+                            <a key={item.href} href={item.href} className={cn("flex items-center gap-2 border p-3", active(item.href) ? "border-ink text-blue" : "border-line")}>
+                              <Icon size={16} /> {item.label}
+                            </a>
+                          );
+                        })}
                         <Button variant="outline" onClick={() => void logout()}>
                           <Logout size={16} /> 退出登录
                         </Button>
@@ -253,11 +256,17 @@ export default function App() {
                 HALITE III ARENA <span className="text-ink-3">·</span> 代码保持私有，结果有据可查。
               </span>
               <span className="flex gap-4">
+                <a className="hover:text-blue" href={`${PRACTICE}/rules`}>
+                  游戏规则
+                </a>
                 <a className="hover:text-blue" href="/api/docs">
                   API 文档
                 </a>
+                <a className="hover:text-blue" href="/sitemap">
+                  站点地图
+                </a>
                 <a className="hover:text-blue" href="https://github.com/CMander02/halite3-lab" target="_blank" rel="noreferrer">
-                  规则与源码 ↗
+                  源码 ↗
                 </a>
               </span>
             </div>

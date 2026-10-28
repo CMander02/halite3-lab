@@ -178,7 +178,7 @@ def reset_avatar(request: Request):
     return {'avatar_version': version}
 
 
-BOARD_SQL = '''SELECT p.version_id,v.version,b.name AS bot_name,b.builtin,u.display_name AS author,p.author_id,
+BOARD_SQL = '''SELECT p.version_id,v.version,v.bot_id,b.name AS bot_name,b.builtin,u.display_name AS author,p.author_id,
     COUNT(*) AS games,SUM(p.rank=1) AS wins,AVG(p.rank) AS avg_rank,AVG(p.score) AS score,
     SUM(p.kills) AS kills,SUM(p.deaths) AS deaths,SUM(p.assists) AS assists,
     SUM(p.robbed) AS robbed,SUM(p.lost) AS lost,AVG(p.delivered) AS delivered,AVG(p.mined) AS mined,

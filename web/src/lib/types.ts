@@ -33,6 +33,7 @@ export interface PlayerStats {
 }
 export interface BoardEntry {
   version_id: string;
+  bot_id: string;
   version: string;
   bot_name: string;
   builtin: number;
@@ -130,6 +131,8 @@ export interface Match {
   created_at: number;
   finished_at: number | null;
   can_view_logs?: boolean;
+  /** the contest the game was played for (match detail only) */
+  contest?: { slug: string; number: number; title: string } | null;
   players?: PlayerStats[];
   attempt_history?: { number: number; status: string; error: string | null }[];
 }
@@ -142,6 +145,7 @@ export interface Job {
   created_at: number;
   total: number;
   counts: Record<string, number>;
+  contest_id?: string | null;
   matches?: Match[];
   config: { modes: number[]; seeds: number[]; rotate_seats: boolean };
 }
@@ -153,6 +157,7 @@ export interface Health {
 }
 export interface LeaderEntry {
   version_id: string;
+  bot_id: string;
   author_id: string | null;
   bot_name: string;
   version: string;

@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Plus, Play, Reload, Close, ArrowRight, ArrowLeft, List, Tournament } from "@nsmr/pixelart-react";
+import { Plus, Play, Reload, Close, ArrowRight, ArrowLeft, List, Tournament, Trophy } from "@nsmr/pixelart-react";
 import type { Bot, Job, User } from "@/lib/types";
 import { api, date, number, useApi } from "@/lib/api";
 import { navigate, useLocation } from "@/lib/router";
@@ -9,6 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Empty, ErrorBox, Loading, PageHead, Panel, PixelBar, Status } from "@/components/pixel";
 import MatchList from "@/components/MatchList";
+
+const KIND: Record<string, string> = {
+  private: "私人循环赛",
+  ranked: "#0 · 12 场基准评测",
+  "ranked-multi": "#0 · 多人评测",
+  "contest-bench": "比赛提交评测",
+  "contest-final": "比赛正式评测",
+};
 
 function combinations(n: number, k: number) {
   if (n < k) return 0;
@@ -31,7 +39,8 @@ function Progress({ job }: { job: Job }) {
 
 export default function Tests({ user, jobId }: { user: User | null; jobId?: string }) {
   const { search } = useLocation();
-  const list = useApi<{ jobs: Job[] }>(user && !jobId ? "/tests" : null, 4000);
+  const [everything, setEverything] = useState(false);
+  const list = useApi<{ jobs: Job[] }>(user && !jobId ? `/tests?kind=${everything ? "all" : "private"}` : null, 4000);
   const detail = useApi<Job>(user && jobId ? `/tests/${jobId}` : null, 3000);
   const bots = useApi<{ bots: Bot[] }>(user ? "/bots" : null);
   const [create, setCreate] = useState(search.has("new"));
@@ -81,7 +90,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
   if (!user)
     return (
       <>
-        <PageHead eyebrow="测试任务" title="后端执行，离开网页也不中断" />
+        <PageHead eyebrow="私人对练" title="后端执行，离开网页也不中断" />
         <Empty title="登录后管理测试任务">
           <Button asChild>
             <a href="/login">登录 / 注册 &gt;</a>
@@ -97,17 +106,26 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
         <PageHead
           eyebrow={
             <a href="/tests" className="hover:text-blue">
-              测试任务
+              私人对练
             </a>
           }
           title={job?.name || "测试任务"}
           description="完成的比赛会保留；中断或失败的场次可以整场重试。"
           action={
-            <Button variant="outline" asChild>
-              <a href="/tests">
-                <ArrowLeft size={14} /> 返回列表
-              </a>
-            </Button>
+            <>
+              {job?.contest_id && (
+                <Button asChild>
+                  <a href={`/contests/${job.contest_id}/mine`}>
+                    <Trophy size={14} /> 所属比赛
+                  </a>
+                </Button>
+              )}
+              <Button variant="outline" asChild>
+                <a href="/tests">
+                  <ArrowLeft size={14} /> 返回列表
+                </a>
+              </Button>
+            </>
           }
         />
         <ErrorBox message={detail.error || message} />
@@ -155,18 +173,21 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
   return (
     <>
       <PageHead
-        eyebrow="测试任务"
+        eyebrow="私人对练"
         title="私人循环赛"
-        description="选择版本和模式，后端生成赛程并自动收集结果。"
+        description="自选版本、模式和种子，后端生成赛程并自动收集结果；只有自己可见，不计入任何排名。比赛提交产生的评测在对应比赛页的“我的提交”里。"
         action={
           <Button onClick={() => setCreate(!create)}>
-            <Plus size={16} /> {create ? "收起" : "新建测试"}
+            <Plus size={16} /> {create ? "收起" : "新建对练"}
           </Button>
         }
       />
       <ErrorBox message={list.error || message} />
+      <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-ink-2">
+        <input type="checkbox" className="size-4 accent-[var(--blue)]" checked={everything} onChange={(e) => setEverything(e.target.checked)} /> 同时显示比赛与 #0 评测任务
+      </label>
       {create && (
-        <Panel title="新建私人循环赛" icon={Tournament} tone="blue" className="mb-6" ticks>
+        <Panel title="新建私人对练" icon={Tournament} tone="blue" className="mb-6" ticks>
           <form onSubmit={submit} className="flex flex-col gap-5">
             <div className="flex flex-col gap-1.5 sm:max-w-md">
               <Label htmlFor="job-name">任务名称</Label>
@@ -253,7 +274,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
                   <Status value={job.status} />
                 </div>
                 <div className="mb-2 text-ink-3">
-                  {job.kind === "ranked" ? "固定基准评测" : job.kind === "ranked-multi" ? "多人基准评测" : "私人循环赛"} · {date(job.created_at)}
+                  {KIND[job.kind] || job.kind} · {date(job.created_at)}
                 </div>
                 <Progress job={job} />
               </div>
@@ -262,7 +283,7 @@ export default function Tests({ user, jobId }: { user: User | null; jobId?: stri
           ))}
         </div>
       ) : (
-        <Empty title="还没有测试任务">创建一个测试，把自己的版本和平台基准对照一下。</Empty>
+        <Empty title="还没有私人对练">新建一个循环赛，把自己的版本和平台基准对照一下。</Empty>
       )}
     </>
   );

@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import { Trophy, Zap, Briefcase, Truck, Eye, ArrowRight, Scale, List } from "@nsmr/pixelart-react";
+import { Trophy, Zap, Briefcase, Truck, Eye, Scale, Upload } from "@nsmr/pixelart-react";
 import { glyphIcon } from "@/components/glyphs";
-import type { BoardEntry, CatalogKind, EloEntry, LeaderEntry } from "@/lib/types";
+import type { BoardEntry, CatalogKind, EloEntry } from "@/lib/types";
+import { navigate, useLocation } from "@/lib/router";
+import { PRACTICE } from "@/lib/sitemap";
 import { KIND_LABEL, SETUP_KINDS, SetupCells, correctionLabel, entry, useCatalog } from "@/components/ModelBadge";
 import { compact, number, percent, useApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Empty, ErrorBox, Loading, PageHead, Panel, TierBadge } from "@/components/pixel";
+import { Empty, ErrorBox, Loading, PageHead } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
 import { MetricBars } from "@/components/charts";
 
@@ -91,12 +93,6 @@ const BOARDS: Board[] = [
   },
 ];
 
-const TIERS = [
-  { tier: "S", rule: "胜率 ≥ 75%" },
-  { tier: "A", rule: "≥ 50%" },
-  { tier: "B", rule: "≥ 25%" },
-  { tier: "C", rule: "< 25%" },
-];
 
 function Who({ e }: { e: { author_id: string | null; author: string | null; bot_name: string; version: string; builtin?: number } }) {
   return (
@@ -114,7 +110,7 @@ function Who({ e }: { e: { author_id: string | null; author: string | null; bot_
 
 function SubBoard({ board, entries }: { board: Board; entries: BoardEntry[] }) {
   const sorted = useMemo(() => [...entries].sort((a, b) => board.value(b) - board.value(a)), [entries, board]);
-  if (!sorted.length) return <Empty title="暂无公开对局数据">参加固定基准评测后，公开对局会自动计入子榜。</Empty>;
+  if (!sorted.length) return <Empty title="暂无公开对局数据">在比赛里提交并完成评测后，公开对局会自动计入子榜。</Empty>;
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <div>
@@ -141,7 +137,9 @@ function SubBoard({ board, entries }: { board: Board; entries: BoardEntry[] }) {
               <tr key={e.version_id}>
                 <td className={cn("num font-pixel", i < 3 ? "text-blue" : "text-ink-3")}>{String(i + 1).padStart(2, "0")}</td>
                 <td className="max-w-[220px]">
-                  <Who e={e} />
+                  <a href={`/bots/${e.bot_id}`} className="block hover:text-blue">
+                    <Who e={e} />
+                  </a>
                 </td>
                 <td className="right num font-pixel text-[24px] leading-[24px]">{board.format(board.value(e))}</td>
                 {board.columns.map((c) => (
@@ -200,7 +198,7 @@ function EloBoard({ entries }: { entries: EloEntry[] }) {
   const active = SETUP_KINDS.some((k) => filter[k]);
   // Baselines have no setup: keep them as reference rows unless a filter is active.
   const shown = entries.filter((e) => (e.attribution ? SETUP_KINDS.every((k) => !filter[k] || e.attribution![k].value === filter[k]) : !active));
-  if (!entries.length) return <Empty title="还没有完成评测的版本">在“Bots”上传版本并参加评测后，这里按修正后 ELO 排名。</Empty>;
+  if (!entries.length) return <Empty title="还没有完成评测的版本">在比赛里提交 bot.cpp、对局完成后，这里按修正后 ELO 排名。</Empty>;
   return (
     <>
       <div className="border-b border-line px-4 py-3">
@@ -254,36 +252,42 @@ function EloBoard({ entries }: { entries: EloEntry[] }) {
   );
 }
 
+const TABS = ["elo", ...BOARDS.map((b) => b.key)];
+
 export default function Leaderboard() {
+  const { search } = useLocation();
   const elo = useApi<{ entries: EloEntry[]; anchor: number }>("/leaderboard/elo");
-  const tiers = useApi<{ entries: LeaderEntry[]; season: string; required_games: number }>("/leaderboard");
   const [mode, setMode] = useState("");
   const stats = useApi<{ entries: BoardEntry[] }>(`/leaderboard/stats${mode ? `?mode=${mode}` : ""}`);
-  const entries = tiers.data?.entries || [];
+  const tab = TABS.includes(search.get("tab") || "") ? search.get("tab")! : "elo";
 
   return (
     <>
       <PageHead
         eyebrow="排行榜"
         title="ELO、Tier 与子榜"
-        description="ELO 总榜按修正后的 ELO 排名，用来平衡不同模型和推理强度；Tier 来自 12 场固定基准评测；子榜统计全部公开对局。"
+        description="跨比赛的全局榜：ELO 总榜按修正后的 ELO 排名，用来平衡不同模型和推理强度；子榜统计全部公开对局。各场比赛自己的排名（以及 #0 的 Tier）在比赛页里。"
         action={
-          <Button asChild>
-            <a href="/bots">
-              <Trophy size={16} /> 提交版本参评
-            </a>
-          </Button>
+          <>
+            <Button variant="outline" asChild>
+              <a href={`${PRACTICE}/tier`}>
+                <Trophy size={16} /> #0 Tier
+              </a>
+            </Button>
+            <Button asChild>
+              <a href={`${PRACTICE}/mine`}>
+                <Upload size={16} /> 去 #0 提交参评
+              </a>
+            </Button>
+          </>
         }
       />
-      <ErrorBox message={tiers.error || stats.error || elo.error} />
-      <Tabs defaultValue="elo" className="gap-6">
+      <ErrorBox message={stats.error || elo.error} />
+      <Tabs value={tab} onValueChange={(t) => navigate(t === "elo" ? "/leaderboard" : `/leaderboard?tab=${t}`, true)} className="gap-6">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="h-10">
             <TabsTrigger value="elo" className="px-4">
               <Scale size={14} /> ELO 总榜
-            </TabsTrigger>
-            <TabsTrigger value="tier" className="px-4">
-              <Trophy size={14} /> Tier
             </TabsTrigger>
             {BOARDS.map(({ key, label, icon: Icon }) => (
               <TabsTrigger key={key} value={key} className="px-4">
@@ -301,87 +305,6 @@ export default function Leaderboard() {
           </p>
         </TabsContent>
 
-        <TabsContent value="tier" className="flex flex-col gap-6">
-          {tiers.loading ? (
-            <Loading />
-          ) : (
-            <>
-              <div className="flex flex-col border border-ink">
-                {TIERS.map(({ tier, rule }) => {
-                  const row = entries.filter((e) => e.tier === tier);
-                  return (
-                    <div key={tier} className="flex min-h-16 border-b border-line last:border-0">
-                      <div className={cn("flex w-20 shrink-0 flex-col items-center justify-center gap-1 border-r border-line sm:w-28", tier === "S" && "bg-ink text-paper", tier === "A" && "bg-blue text-white", tier === "B" && "bg-blue-100", tier === "C" && "bg-paper")}>
-                        <span className="font-pixel text-[36px] leading-[36px]">{tier}</span>
-                        <span className="text-[13px] opacity-80">{rule}</span>
-                      </div>
-                      <div className="flex flex-1 flex-wrap items-center gap-2 p-2">
-                        {row.length ? (
-                          row.map((e) => (
-                            <a key={e.version_id} href={`/matches?version=${e.version_id}`} className="flex items-center gap-2 border border-line bg-paper-2 py-1 pr-3 pl-1 hover:border-ink">
-                              <UserAvatar id={e.author_id} name={e.author} size="sm" />
-                              <span>
-                                {e.bot_name} <span className="text-ink-3">v{e.version}</span>
-                              </span>
-                              <span className="num text-blue">{(e.win_rate * 100).toFixed(0)}%</span>
-                            </a>
-                          ))
-                        ) : (
-                          <span className="px-2 text-ink-3">—</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <Panel title="完整排名" icon={List} bodyClassName="p-0 overflow-x-auto">
-                {entries.length ? (
-                  <table className="ptable">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Tier</th>
-                        <th>Bot</th>
-                        <th className="right">胜率</th>
-                        <th className="right">胜/场</th>
-                        <th className="right">平均矿量</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entries.map((e, i) => (
-                        <tr key={e.version_id}>
-                          <td className="num font-pixel text-ink-3">{String(i + 1).padStart(2, "0")}</td>
-                          <td>
-                            <TierBadge tier={e.tier} />
-                          </td>
-                          <td>
-                            <Who e={e} />
-                          </td>
-                          <td className="right num font-pixel text-[24px] leading-[24px]">{(e.win_rate * 100).toFixed(1)}%</td>
-                          <td className="right num text-ink-2">
-                            {e.wins}/{e.games}
-                          </td>
-                          <td className="right num">{number(Math.round(e.mean_score))}</td>
-                          <td className="right">
-                            <a className="inline-flex items-center gap-1 text-blue" href={`/matches?version=${e.version_id}`}>
-                              回放 <ArrowRight size={12} />
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <Empty title="排行榜等待第一个完成评测的版本">在“Bots”上传版本后选择“提交排名”。</Empty>
-                )}
-              </Panel>
-              <p className="m-0 text-ink-3">
-                评测集 {tiers.data?.season}：对阵 baseline 与 raider，种子 11 / 29 / 47，交换座位，共 {tiers.data?.required_games ?? 12} 场。私人自选对手的测试不计入。
-              </p>
-            </>
-          )}
-        </TabsContent>
 
         {BOARDS.map((board) => (
           <TabsContent key={board.key} value={board.key} className="flex flex-col gap-4">

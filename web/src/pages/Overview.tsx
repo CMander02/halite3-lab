@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Upload, Play, Trophy, Eye, Grid, Zap, Drop, ChevronsVertical, Download, Ship } from "@nsmr/pixelart-react";
+import { Upload, Trophy, Eye, Grid, Zap, Drop, ChevronsVertical, Download, Ship, Archive, BookOpen } from "@nsmr/pixelart-react";
 import { IconTile, type Tone } from "@/components/glyphs";
-import type { BoardEntry, LeaderEntry, Match, Summary, User } from "@/lib/types";
+import type { BoardEntry, ContestSummary, LeaderEntry, Match, Summary, User } from "@/lib/types";
+import { PRACTICE } from "@/lib/sitemap";
 import { compact, number, useApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Empty, Loading, Panel, Stat, TierBadge } from "@/components/pixel";
@@ -18,15 +19,19 @@ const RULES: { icon: typeof Eye; tone: Tone; title: string; text: string }[] = [
 ];
 
 const STEPS = [
-  { icon: Upload, title: "上传 Bot", text: "仅支持 C++17 单文件或 C++ ZIP。每个版本不可覆盖，源码保持私有。", href: "/bots" },
-  { icon: Play, title: "提交测试", text: "1v1、4 人、8 人循环赛，座位轮换。离开网页也会继续执行。", href: "/tests" },
-  { icon: Trophy, title: "回放与排名", text: "逐回合拖动回放；参加固定基准评测后进入公开 Tier 与子榜。", href: "/leaderboard" },
+  { icon: Archive, title: "进入比赛，下载题目包", text: "题面 prompt、规则、公开地图和参考 bot 都在比赛页；可以整包交给 Agent。", tab: "" },
+  { icon: Upload, title: "提交 bot.cpp", text: "在比赛页“我的提交”上传，可附 Agent 轨迹；每次提交都和靶子对战，离开网页也会继续执行。", tab: "/mine" },
+  { icon: Trophy, title: "看排行与回放", text: "比赛内的 ELO 排名和全部对局回放；结果同时计入全局排行。", tab: "/standings" },
 ];
 
 export default function Overview({ user }: { user: User | null }) {
   const summary = useApi<Summary>("/summary", 30000);
   const matches = useApi<{ matches: Match[]; total: number }>("/matches", 15000);
   const board = useApi<{ entries: LeaderEntry[] }>("/leaderboard");
+  const contests = useApi<{ contests: ContestSummary[] }>("/contests", 60000);
+  // the way in: a running contest if there is one, else the standing #0
+  const live = contests.data?.contests.find((c) => c.status === "open" && !c.practice);
+  const contest = live ? `/contests/${live.slug}` : PRACTICE;
   const stats = useApi<{ entries: BoardEntry[] }>("/leaderboard/stats");
   const [shipIndex, setShipIndex] = useState(0);
   const ship = SHIPS[shipIndex];
@@ -66,8 +71,8 @@ export default function Overview({ user }: { user: User | null }) {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="lg" asChild>
-                  <a href={user ? "/bots" : "/register"}>
-                    <Upload size={16} /> {user ? "上传新版本" : "创建账号"} &gt;
+                  <a href={contest}>
+                    <Trophy size={16} /> {live ? `进入比赛 #${live.number}` : "进入 #0 测试比赛"} &gt;
                   </a>
                 </Button>
                 <Button size="lg" variant="outline" className="bg-paper/80" asChild>
@@ -115,12 +120,12 @@ export default function Overview({ user }: { user: User | null }) {
           </Panel>
           <div className="flex flex-col gap-6">
             <Panel
-              title="Tier 榜"
+              title="#0 Tier 榜"
               icon={Trophy}
               tone="gold"
               action={
-                <a href="/leaderboard" className="text-blue">
-                  排行 &gt;
+                <a href={`${PRACTICE}/tier`} className="text-blue">
+                  完整 Tier &gt;
                 </a>
               }
               bodyClassName="p-0"
@@ -145,10 +150,10 @@ export default function Overview({ user }: { user: User | null }) {
             </Panel>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { title: "KDA 王", entry: topKda, value: topKda ? topKda.kda.toFixed(2) : "—" },
-                { title: "抢劫王", entry: topRob, value: topRob ? compact(topRob.robbed) : "—" },
-              ].map(({ title, entry, value }) => (
-                <a key={title} href="/leaderboard" className="pixel-frame ticks block p-3 hover:bg-blue-50">
+                { title: "KDA 王", tab: "kda", entry: topKda, value: topKda ? topKda.kda.toFixed(2) : "—" },
+                { title: "抢劫王", tab: "robbed", entry: topRob, value: topRob ? compact(topRob.robbed) : "—" },
+              ].map(({ title, tab, entry, value }) => (
+                <a key={title} href={`/leaderboard?tab=${tab}`} className="pixel-frame ticks block p-3 hover:bg-blue-50">
                   <div className="text-ink-2">{title}</div>
                   <div className="num text-[24px] leading-[30px] text-blue">{value}</div>
                   {entry && (
@@ -164,7 +169,12 @@ export default function Overview({ user }: { user: User | null }) {
         </div>
 
         <section>
-          <div className="eyebrow mb-4">本赛季规则</div>
+          <div className="mb-4 flex items-baseline justify-between gap-3">
+            <div className="eyebrow">本赛季规则</div>
+            <a href={`${PRACTICE}/rules`} className="flex items-center gap-1 text-blue">
+              <BookOpen size={14} /> 完整规则 &gt;
+            </a>
+          </div>
           <div className="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
             {RULES.map(({ icon, tone, title, text }) => (
               <div key={title} className="bg-paper-2 p-4">
@@ -179,10 +189,10 @@ export default function Overview({ user }: { user: User | null }) {
         <section>
           <div className="eyebrow mb-4">起航流程</div>
           <ol className="m-0 grid list-none gap-6 p-0 md:grid-cols-3">
-            {STEPS.map(({ icon: Icon, title, text, href }, i) => (
+            {STEPS.map(({ icon: Icon, title, text, tab }, i) => (
               <li key={title} className="relative">
                 {i < STEPS.length - 1 && <div className="absolute top-6 left-14 hidden h-0 w-[calc(100%-32px)] border-t-2 border-dashed border-blue-300 md:block" />}
-                <a href={href} className="group relative flex flex-col gap-2">
+                <a href={contest + tab} className="group relative flex flex-col gap-2">
                   <span className="relative flex size-12 items-center justify-center border-2 border-ink bg-blue-50 text-blue group-hover:bg-blue group-hover:text-white">
                     <Icon size={24} />
                     <span className="absolute -top-2 -right-2 bg-ink px-1 text-[13px] leading-[18px] text-paper">{i + 1}</span>
@@ -194,11 +204,21 @@ export default function Overview({ user }: { user: User | null }) {
             ))}
           </ol>
           <div className="mt-6 flex flex-wrap gap-2">
+            <Button size="sm" asChild>
+              <a href="/contests">
+                <Trophy size={14} /> 全部比赛 &gt;
+              </a>
+            </Button>
             <Button variant="outline" size="sm" asChild>
               <a href="/sample-cpp.zip">
                 <Download size={14} /> C++ 示例
               </a>
             </Button>
+            {!user && (
+              <Button variant="outline" size="sm" asChild>
+                <a href="/register">创建账号 &gt;</a>
+              </Button>
+            )}
           </div>
         </section>
       </div>

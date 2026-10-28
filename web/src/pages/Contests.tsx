@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Trophy, Calendar, Clock, Download, Upload, Lock, Plus, Play, Check, Reload, Trash, ArrowLeft, ArrowRight, Flag, Bullseye, Hidden, Copy, Archive, Article, Script, Server, Analytics, BookOpen, Command, Sliders } from "@nsmr/pixelart-react";
+import { Trophy, Calendar, Clock, Download, Upload, Lock, Plus, Play, Check, Reload, Trash, ArrowLeft, ArrowRight, Flag, Bullseye, Hidden, Copy, Archive, Article, Script, Server, Analytics, BookOpen, Command, Sliders, List, Scale } from "@nsmr/pixelart-react";
 import { Glyph, glyphIcon } from "@/components/glyphs";
 import type { Bot, CatalogKind, Contest, ContestConfig, ContestEntry, ContestStatus, ContestSummary, Standings, StandingRow, User } from "@/lib/types";
 import { api, date, number, percent, useApi } from "@/lib/api";
@@ -13,6 +13,8 @@ import { Empty, ErrorBox, Loading, ModeLabel, PageHead, Panel, Status, Tag } fro
 import { UserAvatar } from "@/components/UserAvatar";
 import { CatalogSelect, SetupCells, correctionLabel, useCatalog } from "@/components/ModelBadge";
 import { Markdown } from "@/components/Markdown";
+import MatchBrowser from "@/components/MatchBrowser";
+import { TierBoard } from "@/components/TierBoard";
 
 const MapGlyph = glyphIcon("map", false);
 
@@ -56,9 +58,9 @@ function Countdown({ contest }: { contest: ContestSummary }) {
   return <span className="text-ink-3">未发布</span>;
 }
 
-export default function Contests({ user, slug }: { user: User | null; slug?: string }) {
+export default function Contests({ user, slug, tab }: { user: User | null; slug?: string; tab?: string }) {
   if (slug === "new") return user?.is_admin ? <ContestEditor onDone={(id) => navigate(`/contests/${id}`)} /> : <Empty title="只有管理员可以创建比赛" />;
-  if (slug) return <ContestDetail user={user} slug={slug} />;
+  if (slug) return <ContestDetail user={user} slug={slug} tab={tab || "overview"} />;
   return <ContestList user={user} />;
 }
 
@@ -141,12 +143,15 @@ function ContestList({ user }: { user: User | null }) {
   );
 }
 
-function ContestDetail({ user, slug }: { user: User | null; slug: string }) {
+function ContestDetail({ user, slug, tab }: { user: User | null; slug: string; tab: string }) {
   const { data, error, loading, refresh } = useApi<Contest>(`/contests/${slug}`, 30000);
-  const [tab, setTab] = useState("overview");
+  // every tab has its own URL: /contests/<slug>/<tab>
+  const setTab = (next: string) => navigate(`/contests/${slug}${next === "overview" ? "" : `/${next}`}`, true);
   if (loading) return <Loading />;
   if (!data) return <ErrorBox message={error || "比赛不存在。"} />;
   const c = data;
+  const tabs = ["overview", "standings", ...(c.practice ? ["tier"] : []), "matches", "rules", ...(user ? ["mine"] : []), ...(user?.is_admin ? ["admin"] : [])];
+  const active = tabs.includes(tab) ? tab : "overview";
   return (
     <>
       <a href="/contests" className="mb-4 inline-flex items-center gap-1 text-ink-2 hover:text-blue">
@@ -183,14 +188,25 @@ function ContestDetail({ user, slug }: { user: User | null; slug: string }) {
         }
       />
       <ErrorBox message={error} />
-      <Tabs value={tab} onValueChange={setTab} className="gap-6">
+      <Tabs value={active} onValueChange={setTab} className="gap-6">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="h-10">
             <TabsTrigger value="overview" className="px-4">
               <Flag size={14} /> 概览
             </TabsTrigger>
             <TabsTrigger value="standings" className="px-4">
-              <Trophy size={14} /> 排行
+              <Scale size={14} /> 排行
+            </TabsTrigger>
+            {c.practice && (
+              <TabsTrigger value="tier" className="px-4">
+                <Trophy size={14} /> Tier
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="matches" className="px-4">
+              <List size={14} /> 对局
+            </TabsTrigger>
+            <TabsTrigger value="rules" className="px-4">
+              <BookOpen size={14} /> 规则
             </TabsTrigger>
             {user && (
               <TabsTrigger value="mine" className="px-4">
@@ -207,8 +223,15 @@ function ContestDetail({ user, slug }: { user: User | null; slug: string }) {
         <TabsContent value="overview">
           <Overview contest={c} />
         </TabsContent>
-        <TabsContent value="standings">{tab === "standings" && <StandingsView contest={c} user={user} />}</TabsContent>
-        {user && <TabsContent value="mine">{tab === "mine" && <MyEntries contest={c} user={user} onChange={refresh} />}</TabsContent>}
+        {c.practice && <TabsContent value="tier">{active === "tier" && <TierBoard />}</TabsContent>}
+        <TabsContent value="matches">{active === "matches" && <MatchBrowser user={user} contest={c.slug} modes={c.practice ? [2, 4, 8] : c.modes} />}</TabsContent>
+        <TabsContent value="rules">
+          <Panel title="比赛规则" icon={BookOpen} tone="blue" ticks>
+            <Markdown text={c.rules_text} skipTitle />
+          </Panel>
+        </TabsContent>
+        <TabsContent value="standings">{active === "standings" && <StandingsView contest={c} user={user} />}</TabsContent>
+        {user && <TabsContent value="mine">{active === "mine" && <MyEntries contest={c} user={user} onChange={refresh} />}</TabsContent>}
         {user?.is_admin && (
           <TabsContent value="admin">
             <AdminPanel contest={c} onChange={refresh} />
@@ -422,9 +445,14 @@ function Overview({ contest: c }: { contest: Contest }) {
           </Panel>
         </div>
       </div>
-      <Panel title="比赛规则" icon={BookOpen} tone="blue" ticks>
-        <Markdown text={c.rules_text} skipTitle />
-      </Panel>
+      <a href={`/contests/${c.slug}/rules`} className="pixel-frame flex items-center gap-3 p-4 hover:border-ink">
+        <BookOpen size={20} className="text-blue" />
+        <span className="flex-1">
+          <span className="font-bold">完整比赛规则</span>
+          <span className="block text-ink-2">迷雾、礁石、碰撞与抢矿、地图生成、计分与时限：所有模式的规则全文。</span>
+        </span>
+        <ArrowRight size={16} className="text-blue" />
+      </a>
     </div>
   );
 }
@@ -437,6 +465,11 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
   const { data, error, loading } = useApi<{ standings: Standings; final: boolean; computed_at: number }>(`/contests/${c.slug}/standings?stage=${stage}`, c.status === "finished" ? 0 : 60000);
   const catalog = useCatalog();
   const rows = (data?.standings[mode] || []).filter((r) => history || r.current || r.target);
+  // #0: "overall" is the 12-game 1v1 benchmark; its 4 / 8-player runs come as extra boards
+  const modes = Object.keys(data?.standings || {})
+    .filter((k) => k !== "overall" && !(c.practice && k === "2"))
+    .map(Number)
+    .sort((a, b) => a - b);
   const targets = c.targets;
   return (
     <div className="flex flex-col gap-4">
@@ -449,7 +482,7 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
             ...(canFinal ? ([["final", c.status === "finished" ? "正式排名" : "正式评测（仅管理员）"]] as [string, string][]) : []),
           ]}
         />
-        <Toggle value={mode} onChange={setMode} options={[["overall", "总榜"], ...c.modes.map((m) => [String(m), m === 2 ? "1v1" : `${m} 人`] as [string, string])]} />
+        <Toggle value={mode} onChange={setMode} options={[["overall", c.practice ? "1v1 · 12 场基准" : "总榜"], ...modes.map((m) => [String(m), m === 2 ? "1v1" : c.practice ? `${m} 人评测` : `${m} 人`] as [string, string])]} />
         <label className="flex cursor-pointer items-center gap-2 text-ink-2">
           <input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} className="size-4 accent-[var(--blue)]" /> 显示历史提交
         </label>
@@ -496,7 +529,9 @@ function StandingsView({ contest: c, user }: { contest: Contest; user: User | nu
         )}
       </div>
       <p className="m-0 max-w-[880px] text-ink-3">
-        {c.practice
+        {c.practice && mode !== "overall"
+          ? `${mode} 人评测：每次提交另与 baseline、raider 和 #0 当前修正后 ELO 最高的 7 个 Bot 打多人局（48 场 4 人 + 24 场 8 人，座位轮换），单独拟合 ELO；不影响 12 场基准和 Tier。`
+          : c.practice
           ? "排名来自每次提交与 baseline、raider 的 12 场对局，用 Bradley–Terry 拟合 ELO。每个 Bot 以最新一次提交排名；靶子和历史提交不占名次。这些对局同时计入全局 ELO。"
           : stage === "bench"
           ? "临时排名只来自与靶子的对局：所有提交面对同一组靶子和公开地图，用 Bradley–Terry 拟合出可比的 ELO。每人以当前选定（默认最后一次）的提交排名；靶子和历史提交不占名次。"
@@ -512,7 +547,7 @@ function StandingTr({ row: r, stage, targets, catalog }: { row: StandingRow; sta
     <tr className={cn(r.target && "bg-paper", !r.current && !r.target && "opacity-60")}>
       <td className={cn("num font-pixel whitespace-nowrap", r.rank && r.rank <= 3 ? "text-blue" : "text-ink-3")}>{r.rank ? String(r.rank).padStart(2, "0") : r.target ? "靶子" : "—"}</td>
       <td className="max-w-[240px]">
-        <a href={r.target ? `/matches?version=${r.version_id}` : `/bots/${r.bot_id}`} className="flex min-w-0 items-center gap-2 hover:text-blue">
+        <a href={`/bots/${r.bot_id}`} className="flex min-w-0 items-center gap-2 hover:text-blue">
           <UserAvatar id={r.target ? null : r.user_id} name={r.author || "平台基准"} size="sm" />
           <span className="min-w-0">
             <span className="block truncate">
@@ -801,7 +836,7 @@ function EntryCard({ entry: e, contest: c, busy, onPick }: { entry: ContestEntry
           )}
           {e.job_id && (
             <Button size="sm" variant="outline" asChild>
-              <a href={`/tests/${e.job_id}`}>
+              <a href={`/contests/${c.slug}/matches?version=${e.version_id}`}>
                 对局 <ArrowRight size={12} />
               </a>
             </Button>

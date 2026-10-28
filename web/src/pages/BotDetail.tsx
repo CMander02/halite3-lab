@@ -28,8 +28,8 @@ export default function BotDetail({ id, user }: { id: string; user: User | null 
   }));
   return (
     <>
-      <a href="/bots" className="mb-4 inline-flex items-center gap-1 text-ink-2 hover:text-blue">
-        <ArrowLeft size={14} /> {user ? "我的 Bots" : "Bots"}
+      <a href={bot.owned ? "/bots" : "/leaderboard"} className="mb-4 inline-flex items-center gap-1 text-ink-2 hover:text-blue">
+        <ArrowLeft size={14} /> {bot.owned ? "我的 Bots" : "排行"}
       </a>
       <PageHead
         eyebrow={bot.builtin ? "平台基准" : `Bot · ${bot.author}`}

@@ -3,6 +3,7 @@ import { Plus, Upload, Download, Trophy, ChevronDown, Shield, Command, MoreVerti
 import type { Bot, CatalogKind, User, Version } from "@/lib/types";
 import { api, date, useApi } from "@/lib/api";
 import { navigate } from "@/lib/router";
+import { PRACTICE } from "@/lib/sitemap";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -84,15 +85,16 @@ export default function Bots({ user }: { user: User | null }) {
       setUpload(null);
       await refresh();
       if (result.ranked_error) setMessage(`版本已上传，但参评未提交：${result.ranked_error}`);
-      else navigate("/me");
+      // a ranked upload is a #0 submission: follow it on the contest page
+      else navigate(result.ranked_job_id ? `${PRACTICE}/mine` : "/me");
     });
   };
 
   const submitRank = () =>
     void guard(async () => {
-      const r = await api<{ id: string }>(`/versions/${rankTarget!.id}/rank`, { method: "POST", body: "{}" });
+      await api(`/versions/${rankTarget!.id}/rank`, { method: "POST", body: "{}" });
       setRankTarget(null);
-      navigate(`/tests/${r.id}`);
+      navigate(`${PRACTICE}/mine`);
     });
 
   const patchVersion = (v: Version, body: Record<string, unknown>) =>

@@ -119,6 +119,8 @@ def attach_ranked(db):
     jobs = db.execute(
         "SELECT id,owner_id,candidate_id,created_at FROM jobs WHERE kind='ranked' AND contest_id IS NULL ORDER BY created_at,rowid"
     ).fetchall()
+    # #0's automatic 4 / 8-player runs belong to #0 too (its match list and multiplayer boards)
+    db.execute("UPDATE jobs SET contest_id=? WHERE kind='ranked-multi' AND contest_id IS NULL", (contest["id"],))
     for job in jobs:
         db.execute("UPDATE jobs SET contest_id=? WHERE id=?", (contest["id"], job["id"]))
         if db.execute("SELECT 1 FROM contest_entries WHERE contest_id=? AND version_id=?", (contest["id"], job["candidate_id"])).fetchone():
@@ -407,6 +409,15 @@ def compute(db, contest, stage):
     data = {"overall": table(matches)}
     for mode in config["modes"]:
         data[str(mode)] = table([m for m in matches if m["mode"] == mode])
+    if config.get("practice") and stage == "bench":
+        # #0's 4 / 8-player runs get their own boards; "overall" stays the 12-game 1v1 benchmark.
+        multi = db.execute(
+            """SELECT m.mode,m.seed,m.seat_json,m.result_json FROM matches m JOIN jobs j ON j.id=m.job_id
+            WHERE j.contest_id=? AND j.kind='ranked-multi' AND m.status='complete' AND m.result_json IS NOT NULL""",
+            (contest["id"],),
+        ).fetchall()
+        for mode in sorted({m["mode"] for m in multi}):
+            data[str(mode)] = table([m for m in multi if m["mode"] == mode])
     return data
 
 

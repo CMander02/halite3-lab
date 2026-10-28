@@ -1,23 +1,25 @@
-// Site map: which page (type) links to which. The header and the user menu read their
+// Site map: which page (type) links to which. The header and the 我的 menu read their
 // items from here, so the /sitemap page always shows the real navigation order. The
 // in-page edges are written by hand from the page sources — update them with the page.
 
+/** Contest #0, the standing test contest: the public benchmark, Tier list and default way in. */
+export const PRACTICE = "/contests/test-0";
+
+/** Header: public pages only, in the order of the main flow. The logo is the way home. */
 export const NAV = [
-  { href: "/", label: "概览", code: "HOME" },
-  { href: "/matches", label: "对战", code: "MATCH" },
   { href: "/contests", label: "比赛", code: "CUP" },
   { href: "/leaderboard", label: "排行", code: "RANK" },
-  { href: "/bots", label: "Bots", code: "BOTS" },
-  { href: "/tests", label: "测试", code: "TEST" },
+  { href: "/matches", label: "对战", code: "MATCH" },
   { href: "/sitemap", label: "地图", code: "MAP" },
 ];
 
-/** Account dropdown in the header. */
+/** The 我的 menu (header dropdown and mobile menu): everything personal. */
 export const USER_MENU = [
   { href: "/me", label: "我的主页" },
-  { href: "/admin", label: "管理后台", admin: true },
-  { href: "/settings", label: "账号与头像" },
   { href: "/bots", label: "我的 Bots" },
+  { href: "/tests", label: "私人对练" },
+  { href: "/settings", label: "账号与头像" },
+  { href: "/admin", label: "管理后台", admin: true },
 ];
 
 export type Zone = "public" | "contest" | "personal" | "entry";
@@ -29,8 +31,10 @@ export type SiteNode = {
   zone: Zone;
   /** who can see the page's content */
   access?: "login" | "admin";
-  /** in-page tabs; none of them is in the URL */
+  /** in-page tabs */
   tabs?: string[];
+  /** the tabs have their own URLs */
+  tabsInUrl?: boolean;
   note: string;
   x: number;
   y: number;
@@ -44,18 +48,18 @@ export const ZONES: Record<Zone, { label: string; color: string }> = {
 };
 
 export const NODES: SiteNode[] = [
-  { id: "home", label: "概览", route: "/", zone: "public", note: "首页：统计、近期对战、Tier 前 5、规则摘要、起航流程（Bots → 测试 → 排行）", x: 120, y: 90 },
-  { id: "matches", label: "对战列表", route: "/matches", zone: "public", note: "全部公开对局 + 自己的私人对局，可按模式 / 版本筛选", x: 120, y: 330 },
-  { id: "replay", label: "回放", route: "/matches/:id", zone: "public", tabs: ["战况", "数据", "近期"], note: "单局回放；返回按钮固定回到 /matches", x: 120, y: 570 },
-  { id: "leaderboard", label: "排行", route: "/leaderboard", zone: "public", tabs: ["ELO 总榜", "Tier", "KDA", "抢劫", "搬运", "视野", "采矿"], note: "全局 ELO（全部公开对局）+ Tier（只来自 #0 的 12 场）+ 子榜", x: 380, y: 210 },
+  { id: "home", label: "概览", route: "/", zone: "public", note: "首页（点 Logo 回来）：进入比赛、近期对战、#0 Tier 前 5、规则摘要、起航流程（读题 → 提交 → 看排行）", x: 120, y: 90 },
+  { id: "matches", label: "对战列表", route: "/matches", zone: "public", note: "全站公开对局 + 自己的私人对局，可按模式 / 版本筛选", x: 120, y: 330 },
+  { id: "replay", label: "回放", route: "/matches/:id", zone: "public", tabs: ["战况", "数据", "近期"], note: "单局回放；返回到打开它的页面，参赛者可点进 Bot 页，比赛对局可点回比赛", x: 120, y: 570 },
+  { id: "leaderboard", label: "全局排行", route: "/leaderboard", zone: "public", tabs: ["ELO 总榜", "KDA", "抢劫", "搬运", "视野", "采矿"], tabsInUrl: true, note: "跨比赛的修正后 ELO 总榜 + 子榜（全部公开对局）；Tier 已移到 #0", x: 380, y: 210 },
   { id: "bot", label: "Bot 详情", route: "/bots/:id", zone: "public", note: "任何人的 Bot 公开页：版本、ELO 走势、参加过的比赛", x: 380, y: 450 },
   { id: "contests", label: "比赛列表", route: "/contests", zone: "contest", note: "按状态分组的比赛卡片（#0 常驻测试赛也在这里）", x: 640, y: 90 },
-  { id: "contest", label: "比赛详情", route: "/contests/:slug", zone: "contest", tabs: ["概览", "排行", "我的提交", "管理"], note: "题面、地图、靶子、时间线、规则；排行 / 我的提交 / 管理 是页内 tab", x: 640, y: 330 },
+  { id: "contest", label: "比赛详情", route: "/contests/:slug/:tab", zone: "contest", tabs: ["概览", "排行", "Tier（#0）", "对局", "规则", "我的提交", "管理"], tabsInUrl: true, note: "比赛的一切：题面与题目包、排行（#0 另有 4 / 8 人评测榜）、Tier、全部对局、规则、提交", x: 640, y: 330 },
   { id: "contestNew", label: "新建比赛", route: "/contests/new", zone: "contest", access: "admin", note: "管理员创建比赛", x: 900, y: 90 },
-  { id: "bots", label: "我的 Bots", route: "/bots", zone: "personal", note: "创建 Bot、上传版本、提交 #0 参评；未登录只能看平台基准", x: 640, y: 570 },
+  { id: "bots", label: "我的 Bots", route: "/bots", zone: "personal", note: "创建 Bot、上传版本、管理版本；参评会提交到 #0 并转到 #0 的“我的提交”", x: 640, y: 570 },
   { id: "me", label: "我的主页", route: "/me", zone: "personal", access: "login", note: "每个版本的模型 / 推理强度 / 轨迹检测与 ELO", x: 900, y: 450 },
-  { id: "tests", label: "测试列表", route: "/tests", zone: "personal", access: "login", note: "私人循环赛、#0 评测、多人评测、比赛提交评测全部混在这里", x: 1160, y: 450 },
-  { id: "test", label: "测试详情", route: "/tests/:id", zone: "personal", access: "login", note: "一个任务的进度和对局；只有任务所有者能打开", x: 1160, y: 210 },
+  { id: "tests", label: "私人对练", route: "/tests", zone: "personal", access: "login", note: "自选对手的私人循环赛；默认只列私人任务，可勾选显示比赛 / #0 评测任务", x: 1160, y: 450 },
+  { id: "test", label: "对练详情", route: "/tests/:id", zone: "personal", access: "login", note: "一个任务的进度和对局；只有任务所有者能打开；比赛任务可回到所属比赛", x: 1160, y: 210 },
   { id: "settings", label: "账号与头像", route: "/settings", zone: "personal", access: "login", note: "头像、密码、API Token、命令行说明", x: 900, y: 210 },
   { id: "admin", label: "管理后台", route: "/admin", zone: "personal", access: "admin", tabs: ["概览", "用户", "提交审核", "模型目录"], note: "用户、提交审核、ELO 修正目录", x: 1160, y: 690 },
   { id: "auth", label: "登录 / 注册", route: "/login · /register", zone: "entry", note: "登录后进 /bots，注册后进 /settings?welcome=1", x: 900, y: 690 },
@@ -70,30 +74,32 @@ export type SiteEdge = {
   /** link: a link or button; action: navigation after a form / action succeeds */
   kind?: "link" | "action";
   /** shown only to some visitors */
-  when?: "login" | "guest" | "admin" | "owner";
+  when?: "login" | "guest" | "admin" | "owner" | "other";
 };
 
 export const EDGES: SiteEdge[] = [
-  { from: "home", to: "bots", label: "上传新版本 · 起航流程①", when: "login" },
-  { from: "home", to: "auth", label: "创建账号", when: "guest" },
+  { from: "home", to: "contest", label: "进入比赛（进行中的比赛，否则 #0）· 起航流程 ①②③ · #0 Tier 榜 · 完整规则" },
+  { from: "home", to: "contests", label: "全部比赛" },
   { from: "home", to: "matches", label: "观看回放 · 近期对战“全部”" },
   { from: "home", to: "replay", label: "近期对战行" },
-  { from: "home", to: "leaderboard", label: "Tier 榜 · KDA 王 / 抢劫王 · 起航流程③" },
-  { from: "home", to: "tests", label: "起航流程②" },
+  { from: "home", to: "leaderboard", label: "KDA 王 / 抢劫王（?tab=）" },
+  { from: "home", to: "auth", label: "创建账号", when: "guest" },
   { from: "home", to: "files", label: "C++ 示例 ZIP" },
 
   { from: "matches", to: "replay", label: "对局行" },
-  { from: "matches", to: "tests", label: "新建测试（?new=1）", when: "login" },
+  { from: "matches", to: "tests", label: "新建私人对练（?new=1）", when: "login" },
 
-  { from: "replay", to: "matches", label: "返回 · 全部记录" },
+  { from: "replay", to: "matches", label: "返回（直接打开时）· 全部记录" },
+  { from: "replay", to: "contest", label: "所属比赛" },
+  { from: "replay", to: "bot", label: "参赛者" },
   { from: "replay", to: "replay", label: "近期对战" },
   { from: "replay", to: "files", label: "下载回放" },
 
-  { from: "leaderboard", to: "bot", label: "ELO 总榜行" },
-  { from: "leaderboard", to: "matches", label: "Tier 卡片 · 完整排名“回放”（?version=）" },
-  { from: "leaderboard", to: "bots", label: "提交版本参评" },
+  { from: "leaderboard", to: "bot", label: "ELO 总榜行 · 子榜行" },
+  { from: "leaderboard", to: "contest", label: "#0 Tier · 去 #0 提交参评" },
 
-  { from: "bot", to: "bots", label: "返回（我的）Bots" },
+  { from: "bot", to: "bots", label: "返回我的 Bots", when: "owner" },
+  { from: "bot", to: "leaderboard", label: "返回排行", when: "other" },
   { from: "bot", to: "contest", label: "参加过的比赛" },
   { from: "bot", to: "matches", label: "最新版本对局 · 版本对局（?version=）" },
   { from: "bot", to: "files", label: "下载源码", when: "owner" },
@@ -104,17 +110,16 @@ export const EDGES: SiteEdge[] = [
 
   { from: "contest", to: "contests", label: "全部比赛 · 删除比赛后" },
   { from: "contest", to: "files", label: "题目包 · prompt.md · 靶子下载" },
-  { from: "contest", to: "bot", label: "排行 / 我的提交 tab 中的选手" },
-  { from: "contest", to: "matches", label: "排行 tab 中的靶子（?version=）" },
-  { from: "contest", to: "test", label: "我的提交 tab · “对局”", when: "login" },
+  { from: "contest", to: "bot", label: "排行 / Tier / 我的提交 中的 Bot" },
+  { from: "contest", to: "replay", label: "对局 tab（我的提交“对局”带 ?version=）" },
   { from: "contest", to: "settings", label: "让 Agent 提交 · 创建 Token", when: "login" },
 
   { from: "bots", to: "bot", label: "Bot 名称" },
   { from: "bots", to: "files", label: "源码 / 轨迹 · 示例 ZIP · API 文档" },
   { from: "bots", to: "settings", label: "命令行 · API Token" },
   { from: "bots", to: "auth", label: "登录后上传", when: "guest" },
-  { from: "bots", to: "me", label: "上传版本后", kind: "action", when: "login" },
-  { from: "bots", to: "test", label: "提交 #0 参评后", kind: "action", when: "login" },
+  { from: "bots", to: "contest", label: "参评 · 上传并参评后（#0 我的提交）", kind: "action", when: "login" },
+  { from: "bots", to: "me", label: "上传版本后（不参评）", kind: "action", when: "login" },
 
   { from: "me", to: "bots", label: "上传新版本" },
   { from: "me", to: "matches", label: "版本对局（?version=）" },
@@ -124,6 +129,7 @@ export const EDGES: SiteEdge[] = [
   { from: "tests", to: "auth", label: "登录 / 注册", when: "guest" },
   { from: "test", to: "tests", label: "返回列表" },
   { from: "test", to: "replay", label: "比赛记录行" },
+  { from: "test", to: "contest", label: "所属比赛（比赛 / #0 任务）" },
 
   { from: "settings", to: "files", label: "API 文档" },
   { from: "settings", to: "auth", label: "登录 / 注册", when: "guest" },

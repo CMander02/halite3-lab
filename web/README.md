@@ -110,6 +110,7 @@ python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
 
 - **题目包与规则**：比赛页（不是首页）提供“下载题目包”（`GET /api/contests/{slug}/kit.zip`）：`PROMPT.md` 题目（管理员写的题目 prompt，留空用默认模板，自动附上提交方式）、`RULES.md` 文字规则、`PROTOCOL.md` 协议、`maps/`（公开地图的种子、规则文件，以及用引擎跑一回合渲染出的地形 / 矿量 / 出生点，缓存在数据目录 `contest-maps/`）、`bots/` 参考 bot 源码、`starter/bot.cpp` 和 `tools/client.py`。`GET /api/contests/{slug}/prompt.md` 是题目 + 规则的纯文本。文字规则由冻结的比赛配置生成（时间、提交要求、评测与 ELO、每个模式的地图和规则开关、运行限制），管理员的“补充规则”接在末尾，显示在比赛概览页最下面。
 - **提交 bot.cpp**：比赛只接受规范命名的单文件 `bot.cpp`（允许 Python 的比赛为 `bot.py`）。`POST /api/contests/{slug}/submit`（multipart：`file`、可选 `trace`、`bot`、`version`、`note`、`model` / `effort` / `harness`）一步完成上传和提交：`bot` 同名就是在同一个 Bot 上迭代，首次使用自动创建，版本号自动递增。网页手动上传不需要 API Token；要让 Agent 在会话里自己提交或反复迭代，给它一个 API Token，用 `client.py contest-submit / contest-status / kit`。Agent 轨迹现在是可选的（`HALITE_REQUIRE_TRACE=1` 可恢复强制）。
+- **站点结构**（CMA-273，`/sitemap` 画成有向图，数据在 `src/lib/sitemap.ts`）：页头只放公开页面（比赛 · 排行 · 对战 · 地图），个人页面（我的主页、我的 Bots、私人对练 `/tests`、账号、管理后台）都在右上角“我的”菜单里。比赛详情的 tab 各有 URL：`/contests/{slug}/{standings|tier|matches|rules|mine|admin}`；Tier 只在 #0 的 `tier` tab，全局 `/leaderboard`（tab 用 `?tab=`）只放跨比赛的 ELO 总榜和子榜。`GET /api/matches?contest={id|slug}` 列出某场比赛名下的全部对局，`GET /api/tests?kind=private` 只列私人对练，`GET /api/matches/{id}` 带 `contest`。
 - **#0 测试比赛**（`test-0`）：常驻、不截止、没有正式评测。它就是原来的 12 场固定评测：启动迁移把所有历史“参评”任务按时间收为 #0 的提交，之后每次参评（Bots 页的按钮、上传时勾选、或在 #0 提交 bot.cpp）都会自动记入 #0，对局立即公开并计入全局 ELO 和 Tier。
 
 主要接口：`GET /api/contests`、`GET /api/contests/{slug}`、`GET /api/contests/{slug}/standings?stage=bench|final`、`GET/POST /api/contests/{slug}/entries`、`PUT /api/contests/{slug}/pick`；管理：`POST/PUT/DELETE /api/admin/contests[/{id}]`、`POST /api/admin/contests/{id}/final|finalize|retry`、`GET /api/admin/contest-options`。
@@ -126,7 +127,7 @@ python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
 
 公开排行榜由用户主动提交，每个版本固定对阵 baseline / raider，种子 11、29、47，交换座位，共 12 场。全部完成后根据胜率分为 S≥75%、A≥50%、B≥25%、C<25%。
 
-每次参评同时自动建一个公开的“多人评测”任务（`kind=ranked-multi`，`backend/scheduler.py::multiplayer_games`），对手池为 baseline、raider 加上 #0 中其他 Bot 最新提交里全局 ELO 最高的 7 个（`MULTI_POOL`）。4 人局：对手池按顺序和交错各切一遍三人组，每组与候选同桌、打三张地图中的两张、轮换全部座位，对手池满 9 个时 48 场；8 人局：每张地图一桌、每桌少掉不同的两个对手、轮换全部座位，共 24 场。对手不足 3 个时不跑 4 人，不足 7 个时不跑 8 人。这些对局计入全局 ELO 和 4 / 8 人子榜，不影响 #0 名次和 Tier；场数计入每日配额，但不占“同时 3 个未完成任务”的名额。私人自选测试不计入排行榜。参评会公开版本名称、作者、成绩和对应比赛回放，源码保持私有。
+每次参评同时自动建一个公开的“多人评测”任务（`kind=ranked-multi`，`backend/scheduler.py::multiplayer_games`），对手池为 baseline、raider 加上 #0 中其他 Bot 最新提交里全局 ELO 最高的 7 个（`MULTI_POOL`）。4 人局：对手池按顺序和交错各切一遍三人组，每组与候选同桌、打三张地图中的两张、轮换全部座位，对手池满 9 个时 48 场；8 人局：每张地图一桌、每桌少掉不同的两个对手、轮换全部座位，共 24 场。对手不足 3 个时不跑 4 人，不足 7 个时不跑 8 人。这些任务记在 #0 名下（`jobs.contest_id`）：#0 排行另有“4 人评测 / 8 人评测”两张榜（`/api/contests/test-0/standings` 的 `"4"` / `"8"`，单独拟合），对局出现在 #0 的“对局” tab；它们也计入全局 ELO 和 4 / 8 人子榜，但不影响 #0 的 12 场基准名次和 Tier；场数计入每日配额，但不占“同时 3 个未完成任务”的名额。私人自选测试不计入排行榜。参评会公开版本名称、作者、成绩和对应比赛回放，源码保持私有。
 
 私人回放默认保留 30 天；公开评测和示例回放保留，受到磁盘总量保护。源码、编译缓存和数据库不自动过期。当前没有邮箱找回密码功能。
 

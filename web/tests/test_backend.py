@@ -504,6 +504,20 @@ class BackendTest(unittest.TestCase):
         job = self.a.get("/api/tests/" + jobs[0]["id"]).json()
         self.assertEqual(job["kind"], "ranked-multi")
         self.assertEqual(job["total"], 72)
+        # The multiplayer job is filed under #0: its games show up in #0's match list.
+        with connect() as db:
+            zero = db.execute("SELECT id,slug FROM contests WHERE number=0").fetchone()
+            self.assertEqual(jobs[0]["contest_id"], zero["id"])
+        listed = self.a.get(f"/api/matches?contest={zero['slug']}&mode=8").json()
+        self.assertGreaterEqual(listed["total"], 24)
+        self.assertTrue(all(m["mode"] == 8 for m in listed["matches"]))
+        self.assertEqual(self.a.get("/api/matches?contest=no-such-contest").status_code, 404)
+        # The private-practice view of /tests leaves benchmark jobs out.
+        kinds = {j["kind"] for j in self.a.get("/api/tests").json()["jobs"]}
+        self.assertIn("ranked-multi", kinds)
+        self.assertEqual(self.a.get("/api/tests?kind=private").json()["jobs"], [])
+        detail = self.a.get(f"/api/matches/{listed['matches'][0]['id']}").json()
+        self.assertEqual(detail["contest"]["number"], 0)
 
     def test_invalid_cpp_build_is_cached_and_not_retried(self):
         self.account(self.a, "alice")

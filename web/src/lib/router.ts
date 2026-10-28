@@ -2,9 +2,18 @@ import { useEffect, useState } from "react";
 
 // Minimal pushState router: internal <a href="/..."> links navigate without reloads.
 const listeners = new Set<() => void>();
+let previous: string | null = null;
+// after browser back / forward the remembered page is no longer the one behind us
+if (typeof window !== "undefined") window.addEventListener("popstate", () => (previous = null));
+
+/** The in-app page the visitor came from (null after a full page load). */
+export function previousPath() {
+  return previous;
+}
 
 export function navigate(to: string, replace = false) {
   if (to === location.pathname + location.search) return;
+  if (!replace) previous = location.pathname + location.search;
   if (replace) history.replaceState(null, "", to);
   else history.pushState(null, "", to);
   window.scrollTo(0, 0);

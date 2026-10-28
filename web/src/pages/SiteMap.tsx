@@ -9,7 +9,7 @@ const W = 176;
 const H = 64;
 const VIEW = { width: 1280, height: 760 };
 
-const WHEN: Record<NonNullable<SiteEdge["when"]>, string> = { login: "登录后", guest: "未登录", admin: "管理员", owner: "作者本人" };
+const WHEN: Record<NonNullable<SiteEdge["when"]>, string> = { login: "登录后", guest: "未登录", admin: "管理员", owner: "作者本人", other: "别人的 Bot" };
 const ACCESS: Record<NonNullable<SiteNode["access"]>, string> = { login: "需登录", admin: "仅管理员" };
 
 const byId = new Map(NODES.map((n) => [n.id, n]));
@@ -150,7 +150,7 @@ function NodePanel({ id }: { id: string | null }) {
           <li>每个方框是一类页面，箭头是页面里的链接或按钮：A → B 表示在 A 上能直接点到 B。</li>
           <li>虚线是操作成功后的自动跳转（上传、提交、登录之后）。</li>
           <li>
-            <span className="bg-ink px-1 text-paper">页头n</span> 是页头导航的第 n 项，<span className="bg-good px-1 text-white">菜单</span> 是右上角账号菜单里的项。页头和菜单在每一页都有，所以不另外画箭头。
+            <span className="bg-ink px-1 text-paper">页头n</span> 是页头导航的第 n 项，<span className="bg-good px-1 text-white">菜单</span> 是右上角“我的”菜单里的项。页头和菜单在每一页都有，所以不另外画箭头。
           </li>
           <li>点一个方框：蓝色是它能去的页面，橙色是能来到它的页面。</li>
         </ul>
@@ -189,8 +189,8 @@ function NodePanel({ id }: { id: string | null }) {
         <Tag>{ZONES[n.zone].label}</Tag>
         {n.access && <Tag>{ACCESS[n.access]}</Tag>}
         {nav >= 0 && <Tag className="border-ink bg-ink text-paper">页头第 {nav + 1} 项</Tag>}
-        {menu.includes(n.id) && <Tag className="border-good bg-good text-white">账号菜单</Tag>}
-        {n.tabs && <Tag>tab：{n.tabs.join(" / ")}（不在 URL 里）</Tag>}
+        {menu.includes(n.id) && <Tag className="border-good bg-good text-white">我的 菜单</Tag>}
+        {n.tabs && <Tag>tab：{n.tabs.join(" / ")}{n.tabsInUrl ? "（各有 URL）" : "（不在 URL 里）"}</Tag>}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
         <div>
@@ -214,7 +214,7 @@ export default function SiteMap() {
   const focus = hover || selected;
   return (
     <>
-      <PageHead eyebrow="站点地图" title="哪个页面能进入哪个页面" description="页头导航、账号菜单和每个页面里的链接，画成一张有向图。点方框查看它的出口和入口。" />
+      <PageHead eyebrow="站点地图" title="哪个页面能进入哪个页面" description="页头导航、“我的”菜单和每个页面里的链接，画成一张有向图。点方框查看它的出口和入口。" />
       <section className="pixel-frame mb-6 flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-20 shrink-0 text-ink-2">页头顺序</span>
@@ -229,7 +229,7 @@ export default function SiteMap() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="w-20 shrink-0 text-ink-2">账号菜单</span>
+          <span className="w-20 shrink-0 text-ink-2">我的 ▾</span>
           {USER_MENU.map((item, i) => (
             <span key={item.href} className="flex items-center gap-2">
               {i > 0 && <span className="text-ink-3">·</span>}
@@ -243,9 +243,13 @@ export default function SiteMap() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-20 shrink-0 text-ink-2">页脚</span>
+          <span>游戏规则（#0 规则 tab）</span>
+          <span className="text-ink-3">·</span>
           <span>API 文档</span>
           <span className="text-ink-3">·</span>
-          <span>规则与源码 ↗（GitHub）</span>
+          <span>站点地图</span>
+          <span className="text-ink-3">·</span>
+          <span>源码 ↗（GitHub）</span>
           <label className="ml-auto flex cursor-pointer items-center gap-2 text-ink-2">
             <input type="checkbox" checked={files} onChange={(e) => setFiles(e.target.checked)} className="size-4 accent-[var(--blue)]" /> 在图上显示“下载 / API”
           </label>

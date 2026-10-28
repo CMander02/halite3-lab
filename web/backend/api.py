@@ -620,11 +620,12 @@ def ranked(version_id: str, request: Request):
 
 
 @app.get("/api/tests")
-def jobs(request: Request, offset: int = Query(0, ge=0, le=100000)):
+def jobs(request: Request, offset: int = Query(0, ge=0, le=100000), kind: str = "all"):
     user = user_for(request)
+    where = "owner_id=?" + (" AND kind='private'" if kind == "private" else "")
     with connect() as db:
         rows = db.execute(
-            "SELECT * FROM jobs WHERE owner_id=? ORDER BY created_at DESC,rowid DESC LIMIT 30 OFFSET ?",
+            f"SELECT * FROM jobs WHERE {where} ORDER BY created_at DESC,rowid DESC LIMIT 30 OFFSET ?",
             (user["id"], offset),
         ).fetchall()
         return {"jobs": [job_dict(db, row) for row in rows]}
@@ -694,6 +695,7 @@ def matches(
     version: str | None = None,
     offset: int = Query(0, ge=0, le=100000),
     scope: str = "all",
+    contest: str | None = None,
 ):
     user = user_for(request, False)
     uid = user["id"] if user else None
@@ -708,6 +710,10 @@ def matches(
         where += " AND EXISTS (SELECT 1 FROM json_each(m.seat_json) s WHERE json_extract(s.value,'$.id')=?)"
         params.append(version)
     with connect() as db:
+        if contest:
+            # every game filed under the contest: submission benchmarks, finals, #0's multiplayer runs
+            where += " AND m.job_id IN (SELECT id FROM jobs WHERE contest_id=?)"
+            params.append(contests.load(db, contest, user)["id"])
         total = db.execute(
             f"SELECT COUNT(*) FROM matches m WHERE {where}", params
         ).fetchone()[0]
@@ -725,6 +731,10 @@ def match_detail(match_id: str, request: Request):
         row = get_match(db, match_id, user["id"] if user else None)
         item = match_dict(row)
         item["can_view_logs"] = bool(user and row["owner_id"] == user["id"])
+        contest = db.execute(
+            "SELECT c.slug,c.number,c.title FROM jobs j JOIN contests c ON c.id=j.contest_id WHERE j.id=?", (row["job_id"],)
+        ).fetchone()
+        item["contest"] = dict(contest) if contest else None
         item["players"] = [
             dict(r)
             for r in db.execute(
@@ -775,7 +785,7 @@ def match_logs(match_id: str, request: Request):
 def leaderboard():
     with connect() as db:
         rows = db.execute(
-            "SELECT j.*,v.version,b.name AS bot_name,u.display_name AS author FROM jobs j JOIN versions v ON v.id=j.candidate_id JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=j.owner_id WHERE j.kind='ranked' AND v.language='cpp' ORDER BY j.created_at DESC"
+            "SELECT j.*,v.version,v.bot_id,b.name AS bot_name,u.display_name AS author FROM jobs j JOIN versions v ON v.id=j.candidate_id JOIN bots b ON b.id=v.bot_id JOIN users u ON u.id=j.owner_id WHERE j.kind='ranked' AND v.language='cpp' ORDER BY j.created_at DESC"
         ).fetchall()
         result = []
         for row in rows:
@@ -802,6 +812,7 @@ def leaderboard():
             result.append(
                 {
                     "version_id": row["candidate_id"],
+                    "bot_id": row["bot_id"],
                     "bot_name": row["bot_name"],
                     "version": row["version"],
                     "author": row["author"],

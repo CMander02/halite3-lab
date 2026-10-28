@@ -3,6 +3,7 @@ import { ArrowLeft, Download, Next, Pause, Play, Prev, Forward, Backburger, Scri
 import type { Match, Replay } from "@/lib/types";
 import { api, number, percent, useApi } from "@/lib/api";
 import { playerColor } from "@/lib/colors";
+import { previousPath } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,6 +56,11 @@ function Track({ states, players, last }: { states: BoardState[]; players: numbe
 }
 
 export default function ReplayPage({ id }: { id: string }) {
+  // back goes to the page this replay was opened from (a test, a contest, a bot…), not always /matches
+  const [back] = useState(() => {
+    const p = previousPath();
+    return p && !p.startsWith("/matches/") ? p : "/matches";
+  });
   const match = useApi<Match>(`/matches/${id}`, 0);
   const replay = useApi<Replay>(match.data?.has_replay ? `/matches/${id}/replay` : null);
   const recent = useApi<{ matches: Match[] }>("/matches");
@@ -143,15 +149,20 @@ export default function ReplayPage({ id }: { id: string }) {
 
   const header = (
     <div className="flex min-h-11 items-center gap-3 border-b border-line px-3 py-1.5 sm:px-4">
-      <a href="/matches" className="flex shrink-0 items-center gap-1 text-ink-2 hover:text-blue" aria-label="返回对战记录">
+      <a href={back} className="flex shrink-0 items-center gap-1 text-ink-2 hover:text-blue" aria-label="返回上一页">
         <ArrowLeft size={16} />
-        <span className="hidden sm:inline">对战</span>
+        <span className="hidden sm:inline">返回</span>
       </a>
+      {m?.contest && (
+        <a href={`/contests/${m.contest.slug}/matches`} className="hidden shrink-0 text-blue hover:underline sm:inline">
+          #{m.contest.number} {m.contest.title}
+        </a>
+      )}
       <div className="hidden min-w-0 flex-1 truncate md:block">
         {m?.seats.map((s, i) => (
-          <span key={i} className="mr-2 whitespace-nowrap">
+          <a key={i} href={`/bots/${s.bot_id}`} className="mr-2 whitespace-nowrap hover:text-blue">
             <span style={{ color: playerColor(i) }}>■</span> {s.name}
-          </span>
+          </a>
         ))}
       </div>
       {m && (
