@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import os
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,11 @@ MAX_MATCHES_PER_JOB = 300
 ADMIN_MAX_MATCHES_PER_JOB = 20000
 MIN_DISK_FREE = int(os.environ.get("HALITE_MIN_DISK_FREE", 8 * 1024**3))
 LEASE_SECONDS = 180
+# Opt in after measuring the host. Eight-player matches reserve all eight seats.
+RUNNER_WORKERS = int(os.environ.get("HALITE_RUNNER_WORKERS", "1"))
+RUNNER_SEATS = int(os.environ.get("HALITE_RUNNER_SEATS", "8"))
+if not 1 <= RUNNER_WORKERS <= 4 or not 8 <= RUNNER_SEATS <= 16:
+    raise ValueError("Runner limits require 1..4 workers and 8..16 seats")
 MAX_GAME_SECONDS = 100
 RETENTION_DAYS = 30
 RULES = {
@@ -39,3 +45,9 @@ MODE_SETUPS = {
     8: {"width": 32, "height": 32, "turns": 200, "rules": RULES, "seconds": MAX_GAME_SECONDS},
 }
 SEASON = "h3-lab1-baseline-set1"
+
+
+def scope_prefix(kind):
+    # Separate test arenas and the live service even when sharing a user bus.
+    namespace = hashlib.sha256(str(DATA).encode()).hexdigest()[:12]
+    return f"halite3-{kind}-{namespace}"

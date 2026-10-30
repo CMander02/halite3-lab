@@ -129,6 +129,14 @@ python3 web/client.py upload bot.cpp --name my-bot --version 1.0 \
 
 任务断点恢复以整场比赛为单位。SQLite WAL 保存队列和逐场结果；执行器定期续租，异常退出后过期租约会重跑，完成的比赛不会重复。每场默认最多 3 次尝试；用户可重试失败场次。等待场次可取消，已运行比赛会完成并保存结果。
 
+执行器使用一个协调进程与独立的比赛工作进程。`HALITE_RUNNER_WORKERS` 默认 1（允许 1–4），`HALITE_RUNNER_SEATS` 默认 8（允许 8–16）；领取事务同时检查场数和座位数。建议先测两个工作进程、八座位：两场 4 人或两场 1v1 可并行，8 人局单独运行。公平队列的下一场超过剩余座位额度时等待当前比赛结束，避免大场比赛长期无法执行。比赛设置、Bot 沙箱限额和公开排名规则保持原有定义。
+
+协调进程在编译期间也续租；版本首次编译全局串行，缓存和编译失败记录在同一锁内发布。工作进程退出后，协调进程先停止其 Bot scope，再仅重试对应比赛。旧租约不能覆盖结果、回放、日志或分析记录。协调进程独占全局锁；启动时只清理当前数据目录对应的 scope，独立测试目录不会停止线上比赛。停止服务会中断正在运行的比赛并按原有尝试上限重试，完成结果保留。
+
+部署双进程需要同时调整协调服务的资源限制，示例在 `deploy/halite3-runner-limits.conf`；Bot 的 scope 单独受限，不计入父服务 `MemoryMax`。用服务 Python 执行 `HALITE_ENGINE=/absolute/path/to/halite .venv/bin/python scripts/benchmark_runner.py /new/private/directory` 可对相同的六场 2 / 4 / 8 人示例赛程分别运行串行和双进程。脚本只创建新数据目录，不读取生产账号或上传文件，报告耗时、并发数、采样内存、健康接口响应和比赛结果一致性。先完成实测，再安装 drop-in、执行 `systemctl --user daemon-reload` 并重启执行器；撤销 drop-in 后重载、重启可恢复单场执行。
+
+故障恢复实测使用同样的服务 Python：`HALITE_ENGINE=/absolute/path/to/halite .venv/bin/python scripts/check_runner_recovery.py /another/new/private/directory`。脚本在两个隔离示例局执行期间依次向一个工作进程和协调进程发送 SIGKILL，检查剩余对局的尝试次数、引擎与 scope 清理、重启后完成结果；证据写入新目录的 `recovery-evidence.json`。
+
 回放保存 gzip JSON `.hlt` 数据，包括每回合船只、矿量、动作和事件。播放器将 H3 的下一帧船状态与本帧末尾银行和矿场对齐，避免回合偏移。提供逐帧、播放、1×/2×/4×、棋盘视角、下载、移动端触摸进度。源码始终私有；私人测试及日志按账号隔离。
 
 公开排行榜由用户主动提交，每个版本固定对阵 baseline / raider，种子 11、29、47，交换座位，共 12 场。全部完成后根据胜率分为 S≥75%、A≥50%、B≥25%、C<25%。

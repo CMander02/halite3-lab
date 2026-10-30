@@ -1,9 +1,11 @@
+import fcntl
 import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import shutil
 import subprocess
+import time
 import uuid
 from . import settings as S
 from .storage import extract
@@ -21,7 +23,22 @@ sandbox = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sandbox)
 
 
-def prepare(seat):
+def prepare(seat, cancelled=lambda: False):
+    # Serialize cold builds across workers, including publication of cache metadata.
+    # Cache hits also take the lock, so they never observe a partially published build.
+    with (S.DATA / "build.lock").open("a") as lock:
+        while True:
+            if cancelled():
+                raise RuntimeError("执行器停止，编译等待重试。")
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                time.sleep(0.1)
+        return _prepare(seat, cancelled)
+
+
+def _prepare(seat, cancelled):
     if not eligible(seat):
         raise BotBuildError(CPP_ONLY)
     directory = (
@@ -74,23 +91,37 @@ def prepare(seat):
                 "c++",
                 *sources,
             ]
-            unit = f"halite3-build-{uuid.uuid4().hex[:12]}"
+            unit = f"{S.scope_prefix('build')}-{uuid.uuid4().hex[:12]}"
+            proc = None
             try:
-                proc = subprocess.run(
+                proc = subprocess.Popen(
                     sandbox.command(temporary, args, unit, compile=True),
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    timeout=65,
                 )
-            except subprocess.TimeoutExpired:
+                deadline = time.monotonic() + 65
+                while True:
+                    if cancelled():
+                        raise RuntimeError("执行器停止，编译等待重试。")
+                    if time.monotonic() >= deadline:
+                        raise BotBuildError("C++ 编译超过 60 秒。")
+                    try:
+                        _, stderr = proc.communicate(timeout=0.5)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+            finally:
+                if proc and proc.poll() is None:
+                    proc.kill()
+                    proc.communicate()
                 subprocess.run(
                     ["systemctl", "--user", "stop", unit + ".scope"],
                     capture_output=True,
                     timeout=10,
                 )
-                raise BotBuildError("C++ 编译超过 60 秒。")
             if proc.returncode:
-                raise BotBuildError("C++ 编译失败：" + proc.stderr[-5000:])
+                raise BotBuildError("C++ 编译失败：" + stderr[-5000:])
             info["compiler"] = subprocess.check_output(
                 [S.CXX, "--version"], text=True
             ).splitlines()[0]
@@ -102,8 +133,10 @@ def prepare(seat):
         temporary.chmod(0o555)
         if cache.exists():
             raise RuntimeError("版本编译缓存与源码不一致，请发布新版本。")
-        temporary.replace(cache)
+        # Publish metadata first: an interrupted build with no runtime is safe to
+        # rebuild. A runtime without metadata would block all future retries.
         metadata.write_text(json.dumps(info, ensure_ascii=False, indent=2))
+        temporary.replace(cache)
         return cache, info
     except BotBuildError as exc:
         failure.write_text(
