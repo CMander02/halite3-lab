@@ -136,6 +136,8 @@ def record(db, match_id, replay=None):
     seats = json.loads(row['seat_json'])
     result = json.loads(row['result_json'])['stats']
     values = analyze(replay)
+    from . import rule_analytics
+    rule_analytics.record(db, match_id, replay)
     db.execute('DELETE FROM match_players WHERE match_id=?', (match_id,))
     for index, seat in enumerate(seats):
         final = result.get(str(index), {})

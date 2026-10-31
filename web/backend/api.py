@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 from . import settings as S
 from .eligibility import CPP_ONLY, eligible
 from .db import connect, initialize, now
-from . import admin, contests, profiles, submissions
+from . import admin, contests, profiles, submissions, rule_analytics
 from .security import (
     COOKIE,
     PASSWORDS,
@@ -65,6 +65,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(profiles.router)
+app.include_router(rule_analytics.router)
 app.include_router(admin.router)
 app.include_router(submissions.router)
 app.include_router(contests.router)

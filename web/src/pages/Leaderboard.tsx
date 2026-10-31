@@ -17,6 +17,7 @@ import { PRACTICE } from "@/lib/sitemap";
 import { TierBoard } from "@/components/TierBoard";
 import { Who, fullName } from "@/components/BotWho";
 import { MetricBars } from "@/components/charts";
+import RuleStats from "./RuleStats";
 
 const Pickaxe = glyphIcon("pickaxe");
 
@@ -362,6 +363,7 @@ export default function Leaderboard() {
               <Trophy size={14} /> Tier
             </TabsTrigger>
             <TabsTrigger value="matrix" className="px-4">胜率矩阵</TabsTrigger>
+            <TabsTrigger value="rules" className="px-4">规则统计</TabsTrigger>
             {BOARDS.map(({ key, label, icon: Icon }) => (
               <TabsTrigger key={key} value={key} className="px-4">
                 <Icon size={14} /> {label}
@@ -392,6 +394,11 @@ export default function Leaderboard() {
         <TabsContent value="matrix" className="flex min-w-0 flex-col gap-4">
           <ModeFilter mode={mode} onChange={(value) => update({ mode: value })} />
           <div className="pixel-frame min-w-0 p-3 sm:p-4">{matrix.loading ? <Loading /> : matrix.data ? <WinMatrix key={mode} data={matrix.data} /> : null}</div>
+        </TabsContent>
+
+        <TabsContent value="rules" className="flex min-w-0 flex-col gap-4">
+          <ModeFilter mode={mode} onChange={(value) => update({ mode: value })} />
+          {view === "rules" && <RuleStats mode={mode} group={search.get("group") === "top" ? "top" : "all"} onGroup={(group) => update({ group })} />}
         </TabsContent>
 
         {BOARDS.map((board) => (

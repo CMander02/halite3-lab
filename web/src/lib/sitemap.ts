@@ -1,6 +1,6 @@
 import { BOARD_VIEWS } from "./leaderboard";
 
-const BOARD_LABELS = ["ELO 总榜", "Tier", "胜率矩阵", "KDA", "抢劫", "搬运", "视野", "采矿"];
+const BOARD_LABELS = ["ELO 总榜", "Tier", "胜率矩阵", "KDA", "抢劫", "搬运", "视野", "采矿", "规则统计"];
 const CONTEST_TABS: [string, string][] = [["", "概览"], ["standings", "排行"], ["tier", "Tier"], ["matches", "对局"], ["rules", "规则"], ["mine", "我的提交"]];
 
 // Site map: which page (type) links to which. The header and the 我的 menu read their

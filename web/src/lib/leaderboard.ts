@@ -1,4 +1,4 @@
-export const BOARD_VIEWS = ["elo", "tier", "matrix", "kda", "robbed", "delivered", "vision", "mined"] as const;
+export const BOARD_VIEWS = ["elo", "tier", "matrix", "kda", "robbed", "delivered", "vision", "mined", "rules"] as const;
 
 export function leaderboardState(search: URLSearchParams) {
   const view = (search.get("view") || search.get("tierlist") || "elo").toLowerCase();

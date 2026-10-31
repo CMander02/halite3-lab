@@ -9,6 +9,7 @@
   - `src/replay/`：回放页与 Canvas 棋盘（抖动矿量、按移动方向旋转的船、迷雾视角、沉船标记）。桌面端 100% 缩放不滚动即可看完整战况和进度条；手机端首屏为棋盘 + 全部玩家 + 控制条，下滑查看数据与近期对战。
 - `backend/profiles.py`：头像（注册即分配全站唯一的 8×8 对角对称像素头像，可上传 PNG 替换 / 恢复默认）、显示名称、`/api/leaderboard/stats` 子榜、`/api/summary`。
 - `backend/analytics.py`：从回放计算每局每座位的击沉 / 被击沉 / 同归、抢劫与损失货物、搬运、采矿、视野（`match_players` 表），新比赛完成时写入，启动时回填旧比赛。
+- `backend/rule_analytics.py`：版本化规则诊断摘要（`match_rule_stats` 表），展示碰撞事件结果、空载参撞、载重分布与期末地面矿。入口 `/leaderboard?view=rules&mode=8&group=top`，API `/api/leaderboard/rules`；`top` 按至少 12 个公开座位场次的非基准版本原始 ELO 取前 25%，同分包含。新局随现有统计写入，历史回填显式运行 `HALITE_DATA_DIR=<数据目录> .venv/bin/python scripts/backfill_rule_stats.py`；GET 和启动不为此新功能遍历回放。只展示全部座位版本可见的完成公开局，配置不同的局分别聚合，未覆盖场次明确列出。实验方案与时点观测见 [规则讨论](../lab/RULE_DISCUSSION.md)。
 - `CAPACITY.md`：42 个版本规模下的赛程、耗时与回放存储（含 D1）估算。
 - `backend/`：FastAPI、Argon2id 账号、会话、API Token、SQLite 任务队列、编译缓存。
 - `runner/sandbox.py`：C++ 参赛进程与平台固定基准的 Bubblewrap 与 systemd scope 启动器；不使用 Docker 执行 bot。
