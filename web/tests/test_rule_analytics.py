@@ -100,6 +100,8 @@ class RuleApiTest(unittest.TestCase):
         rating._cache['key'] = None
 
     def test_public_only_coverage_mode_and_hidden_versions(self):
+        self.summary['events'] = [dict(owners=[0], enemy=False, outcome='pileup', count=3),
+                                  dict(owners=[0, 1], enemy=True, outcome='capture', count=2)]
         self.game('public')
         self.game('missing', stats=False)
         self.game('private', public=0)
@@ -108,6 +110,9 @@ class RuleApiTest(unittest.TestCase):
         result = self.client.get('/api/leaderboard/rules?mode=2').json()
         self.assertEqual((result['eligible'], result['covered'], result['missing']), (2, 1, 1))
         self.assertEqual(result['cohorts'][0]['games'], 1)
+        self.assertEqual(result['cohorts'][0]['friendly_outcomes'], {'pileup': 3})
+        self.assertEqual(result['cohorts'][0]['friendly_events'], 3)
+        self.assertEqual(result['cohorts'][0]['outcomes'], {'capture': 2})
         self.assertEqual(self.client.get('/api/leaderboard/rules?group=top').json()['covered'], 0)
         for query in ('mode=3', 'group=bad'):
             self.assertEqual(self.client.get('/api/leaderboard/rules?' + query).status_code, 422)

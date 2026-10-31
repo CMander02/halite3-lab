@@ -6,7 +6,7 @@ type Cohort = {
   mode: number; config: Record<string, number | boolean | null>; games: number; seats: number;
   initial: number; remaining: number; cells: number; reefs: number; unknown: number;
   ship_turns: number; moving_turns: number; cargo_bins: number[]; enemy_events: number;
-  friendly_events: number; outcomes: Record<string, number>; counters: Record<string, number>; peak_ships_sum: number;
+  friendly_events: number; outcomes: Record<string, number>; friendly_outcomes: Record<string, number>; counters: Record<string, number>; peak_ships_sum: number;
 };
 type Report = {
   covered: number; eligible: number; missing: number; latest_match_at: number | null; bins: string[]; cohorts: Cohort[];
@@ -39,8 +39,8 @@ function CohortStats({ data: d, bins }: { data: Cohort; bins: string[] }) {
       <div className="min-w-0"><h3>回合开始载重分布</h3>{d.ship_turns ? <MetricBars label="船回合占比" rows={bins.map((name, i) => ({ name, value: d.cargo_bins[i] / d.ship_turns }))} format={(v) => percent(v, 1)} /> : <p className="text-ink-3">暂无船回合样本。</p>}
         <p className="text-sm text-ink-2">{number(d.ship_turns)} 个船回合，包含存活船的逐回合载重。主动移动占 {rate(d.moving_turns, d.ship_turns)}。</p></div>
     </div>
-    <div className="overflow-x-auto"><table className="ptable"><caption className="py-3 text-left text-ink-2">参撞船计数，含所选版本的存活船与沉没船</caption><thead><tr><th>结果</th><th className="right">敌对事件</th><th className="right">所选船参与</th><th className="right">其中回合开始空载</th></tr></thead><tbody>
-      {Object.entries(OUTCOMES).map(([key, label]) => <tr key={key}><th scope="row">{label}</th><td className="right num">{number(d.outcomes[key] || 0)}</td><td className="right num">{number(c[`enemy_${key}`] || 0)}</td><td className="right num">{rate(c[`enemy_${key}_empty`] || 0, c[`enemy_${key}`] || 0)}</td></tr>)}
+    <div className="overflow-x-auto"><table className="ptable"><caption className="py-3 text-left text-ink-2">事件按归属分别计数；敌对参撞船含所选版本的存活船与沉没船</caption><thead><tr><th>结果</th><th className="right">敌对事件</th><th className="right">己方事件</th><th className="right">敌对参撞船</th><th className="right">其中回合开始空载</th></tr></thead><tbody>
+      {Object.entries(OUTCOMES).map(([key, label]) => <tr key={key}><th scope="row">{label}</th><td className="right num">{number(d.outcomes[key] || 0)}</td><td className="right num">{number(d.friendly_outcomes[key] || 0)}</td><td className="right num">{number(c[`enemy_${key}`] || 0)}</td><td className="right num">{rate(c[`enemy_${key}_empty`] || 0, c[`enemy_${key}`] || 0)}</td></tr>)}
     </tbody></table></div>
     <p className="mb-0 text-sm text-ink-3">空载指载重为 0。主动移动按实际成功移动统计，不能据此判断攻击意图。期末地面矿含碰撞回流，初始矿枯竭率需另做资源追踪；该比值也受灵感奖励、移动耗矿与落点建造影响。{d.unknown > 0 && `另有 ${d.unknown} 个碰撞事件无法还原，已排除碰撞指标。`}</p>
   </section>;

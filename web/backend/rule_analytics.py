@@ -175,7 +175,7 @@ def report(db, mode=None, group='all'):
         key = json.dumps([row['mode'], value['config']], sort_keys=True)
         item = cohorts.setdefault(key, dict(mode=row['mode'], config=value['config'], games=0, seats=0, initial=0, remaining=0,
                                             cells=0, reefs=0, unknown=0, ship_turns=0, moving_turns=0, cargo_bins=[0] * len(BINS),
-                                            enemy_events=0, friendly_events=0, outcomes={}, counters={}, peak_ships_sum=0))
+                                            enemy_events=0, friendly_events=0, outcomes={}, friendly_outcomes={}, counters={}, peak_ships_sum=0))
         item['games'] += 1
         for field in ('initial', 'remaining', 'cells', 'reefs', 'unknown'):
             item[field] += value[field]
@@ -199,6 +199,8 @@ def report(db, mode=None, group='all'):
                 item['outcomes'][outcome] = item['outcomes'].get(outcome, 0) + event['count']
             else:
                 item['friendly_events'] += event['count']
+                outcome = event['outcome']
+                item['friendly_outcomes'][outcome] = item['friendly_outcomes'].get(outcome, 0) + event['count']
     return dict(schema=SCHEMA, mode=mode, group=group, eligible=eligible, covered=covered, missing=eligible-covered,
                 latest_match_at=latest, generated_at=int(time.time()), bins=BINS,
                 top=dict(min_games=12, candidates=len(candidates), cutoff=cutoff,
