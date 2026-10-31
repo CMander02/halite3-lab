@@ -1,4 +1,5 @@
 #include "BasicGenerator.hpp"
+#include "ExperimentGenerator.hpp"
 #include <queue>
 #include <random>
 #include <unordered_set>
@@ -14,6 +15,10 @@ namespace mapgen {
  * @param parameters The parameters to use.
  */
 void Generator::generate(Map &map, const MapParameters &parameters) {
+    if (Constants::get().SYMMETRIC_MAP) {
+        generate_experiment(map, parameters);
+        return;
+    }
     switch (parameters.type) {
     case MapType::Basic:
         BasicGenerator(parameters).generate(map);

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import RuleExperiments from "./RuleExperiments";
 import { Empty, ErrorBox, Loading, ModeLabel, PageHead, Panel, Status, Tag } from "@/components/pixel";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CatalogSelect, SetupCells, correctionLabel, useCatalog } from "@/components/ModelBadge";
@@ -150,7 +151,7 @@ function ContestDetail({ user, slug, tab }: { user: User | null; slug: string; t
   if (loading) return <Loading />;
   if (!data) return <ErrorBox message={error || "比赛不存在。"} />;
   const c = data;
-  const tabs = ["overview", "standings", ...(c.practice ? ["tier"] : []), "matches", "rules", ...(user ? ["mine"] : []), ...(user?.is_admin ? ["admin"] : [])];
+  const tabs = ["overview", "standings", ...(c.practice ? ["tier"] : []), ...(c.experimental ? ["experiments"] : []), "matches", "rules", ...(user ? ["mine"] : []), ...(user?.is_admin ? ["admin"] : [])];
   const active = tabs.includes(tab) ? tab : "overview";
   return (
     <>
@@ -205,6 +206,7 @@ function ContestDetail({ user, slug, tab }: { user: User | null; slug: string; t
             <TabsTrigger value="matches" className="px-4">
               <List size={14} /> 对局
             </TabsTrigger>
+            {c.experimental && <TabsTrigger value="experiments" className="px-4">规则实验</TabsTrigger>}
             <TabsTrigger value="rules" className="px-4">
               <BookOpen size={14} /> 规则
             </TabsTrigger>
@@ -231,6 +233,7 @@ function ContestDetail({ user, slug, tab }: { user: User | null; slug: string; t
           </Panel>
         </TabsContent>
         <TabsContent value="standings">{active === "standings" && <StandingsView contest={c} user={user} />}</TabsContent>
+        {c.experimental && <TabsContent value="experiments">{active === "experiments" && <RuleExperiments slug={c.slug} />}</TabsContent>}
         {user && <TabsContent value="mine">{active === "mine" && <MyEntries contest={c} user={user} onChange={refresh} />}</TabsContent>}
         {user?.is_admin && (
           <TabsContent value="admin">
@@ -458,8 +461,8 @@ function Overview({ contest: c }: { contest: Contest }) {
 }
 
 function StandingsView({ contest: c, user }: { contest: Contest; user: User | null }) {
-  const canFinal = c.status === "finished" || Boolean(user?.is_admin && c.final_started_at);
-  const [stage, setStage] = useState<"bench" | "final">(c.status === "finished" ? "final" : "bench");
+  const canFinal = c.experimental || c.status === "finished" || Boolean(user?.is_admin && c.final_started_at);
+  const [stage, setStage] = useState<"bench" | "final">(c.experimental || c.status === "finished" ? "final" : "bench");
   const [mode, setMode] = useState("overall");
   const [history, setHistory] = useState(false);
   const { data, error, loading } = useApi<{ standings: Standings; final: boolean; computed_at: number }>(`/contests/${c.slug}/standings?stage=${stage}`, c.status === "finished" ? 0 : 60000);

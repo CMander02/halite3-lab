@@ -16,6 +16,7 @@ ANCHOR = 1500.0
 PRIOR_GAMES = 1.0
 _cache = {"key": None, "value": None}
 _lock = threading.Lock()
+RATED = "status='complete' AND public=1 AND job_id IN (SELECT id FROM jobs WHERE rating_scope='global')"
 
 
 def attribution(row, catalog):
@@ -120,11 +121,11 @@ def ratings(db):
 
     Contest games stay private until the contest publishes its final results,
     so the global ELO only moves once a contest's submission window is over."""
-    key = tuple(db.execute("SELECT COUNT(*),COALESCE(MAX(finished_at),0) FROM matches WHERE status='complete' AND public=1").fetchone())
+    key = tuple(db.execute(f"SELECT COUNT(*),COALESCE(MAX(finished_at),0) FROM matches WHERE {RATED}").fetchone())
     with _lock:
         if _cache["key"] == key:
             return _cache["value"]
-    value = fit_matches(db.execute("SELECT seat_json,result_json FROM matches WHERE status='complete' AND public=1 AND result_json IS NOT NULL"))
+    value = fit_matches(db.execute(f"SELECT seat_json,result_json FROM matches WHERE {RATED} AND result_json IS NOT NULL"))
     with _lock:
         _cache["key"], _cache["value"] = key, value
     return value
@@ -179,7 +180,7 @@ def matchup_matrix(db, mode=None):
     entries = board(db)
     allowed = {e["version_id"] for e in entries}
     cells = {}
-    query = "SELECT seat_json,result_json FROM matches WHERE status='complete' AND public=1 AND result_json IS NOT NULL"
+    query = f"SELECT seat_json,result_json FROM matches WHERE {RATED} AND result_json IS NOT NULL"
     params = []
     if mode is not None:
         query += " AND mode=?"

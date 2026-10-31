@@ -26,6 +26,9 @@ struct Player final : public Enumerated<Player> {
     id_map<Entity, Location> entities{}; /**< Mapping from entity to location. */
     bool terminated;                     /**< Whether the player was kicked out of the game. */
     bool can_play = true;                /**< Whether the player has sufficient resources remaining. */
+    unsigned long spawned = 0;
+    unsigned long last_spawn_turn = 0;
+    unsigned long last_loss_turn = 0;
 
     /**
      * Get whether the player has an entity.

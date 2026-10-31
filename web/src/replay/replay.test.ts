@@ -54,4 +54,8 @@ describe("H3 replay turn alignment", () => {
     expect(wrappedDistance(0, 0, 31, 31, 32, 32)).toBe(2);
     expect(wrappedDistance(2, 2, 6, 5, 32, 32)).toBe(7);
   });
+  it("keeps bounded visibility distances from wrapping at an edge", () => {
+    expect(wrappedDistance(0, 0, 31, 31, 32, 32, true)).toBe(62);
+    expect(wrappedDistance(2, 2, 6, 5, 32, 32, true)).toBe(7);
+  });
 });

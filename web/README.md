@@ -22,6 +22,8 @@
 
 ## 本地开发
 
+规则实验 #1 使用独立的 txcloud worker、固定八个既有 Bot 与两个平台基准。`/contests/test-1/experiments` 按 28 个变体及人数展示进度和成绩，不混入 #0 / 全局 ELO。赛程、经济、边界、双船型、远端导出和回传约定见 [EXPERIMENT_1.md](../lab/EXPERIMENT_1.md)。本机镜像任务使用远端等待状态，现有本机执行器不会领取。
+
 ```bash
 cd web
 uv venv

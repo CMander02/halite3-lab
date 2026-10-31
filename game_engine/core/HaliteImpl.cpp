@@ -152,6 +152,7 @@ void HaliteImpl::run_game() {
         // Add state of entities at start of turn.
         // First, update inspiration flags, so they can be used for
         // movement/mining and so they are part of the replay.
+        game.store.turn_number = game.turn_number;
         update_inspiration();
         game.replay.full_frames.back().add_entities(game.store);
 
@@ -271,10 +272,10 @@ void HaliteImpl::process_turn() {
     }
 
     // Resolve ship mining
-    const auto max_energy = Constants::get().MAX_ENERGY;
     const auto ships_threshold = Constants::get().SHIPS_ABOVE_FOR_CAPTURE;
     const auto bonus_multiplier = Constants::get().INSPIRED_BONUS_MULTIPLIER;
     for (auto &[entity_id, entity] : game.store.entities) {
+        const auto max_energy = entity.capacity();
         if (changed_entities.find(entity_id) == changed_entities.end()
             && entity.energy < max_energy) {
             // Allow this entity to extract
@@ -286,6 +287,7 @@ void HaliteImpl::process_turn() {
                 Constants::get().EXTRACT_RATIO;
             energy_type extracted = static_cast<energy_type>(
                 std::ceil(static_cast<double>(cell.energy) / ratio));
+            if (Constants::get().FIXED_MINING > 0) extracted = std::min(cell.energy, Constants::get().FIXED_MINING);
             energy_type gained = extracted;
 
             // If energy is small, give it all to the entity.

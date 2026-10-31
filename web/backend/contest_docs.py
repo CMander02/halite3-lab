@@ -114,6 +114,17 @@ def mechanics(rules):
 
 def game_rules(config):
     """The full game rules, worded from the rules files of the contest's modes."""
+    if config.get('experimental'):
+        lines = ['## 规则实验与固定 Bot', '', '本比赛由 txcloud 执行，使用现有版本，不修改 Bot 源码。各规则变体分别统计，综合新规则为主排行，不计入 #0 或全局 ELO。',
+                 '', '初始格矿上限在整数经济变体中为 15；碰撞回流矿可超过 15，不丢弃资源。运输船与侦察船交替自动出生，旧 Bot 仍使用原有 g 指令；侦察船具有独立容量与视野。',
+                 '', '不同变体沿用对应的结算顺序：建落点、移动、碰撞、自动卸货、出生、采矿。生产限制拒绝出生时不收费。',
+                 '', '## 全部实验配置', '']
+        for case in config['scenarios']:
+            lines += [f"### {case['label']} (`{case['key']}`)", '']
+            for mode, setup in case['setups'].items():
+                lines += [f"- {mode} 人：{setup['width']}×{setup['height']}，{setup['turns']} 步；地形种子 {case['map_seeds']}。"]
+            lines += ['', '```json', json.dumps(case['setups']['8']['rules'], ensure_ascii=False, indent=2), '```', '']
+        return lines
     setups = [config["setups"][str(m)] for m in config["modes"]]
     cs = [constants(s["rules"]) for s in setups]
     c = cs[0]
@@ -226,6 +237,8 @@ def game_rules(config):
 
 
 def rules_markdown(row, config):
+    if config.get('experimental'):
+        return f"# #{row['number']} {row['title']} · 比赛规则\n\n" + '\n'.join(game_rules(config))
     practice = config.get("practice")
     targets = len(config["targets"])
     out = [f"# #{row['number']} {row['title']} · 比赛规则", ""]
@@ -286,6 +299,8 @@ DEFAULT_PROMPT = """你要为一个魔改版 Halite III 写一个 bot，参加�
 
 
 def prompt_markdown(row, config, origin):
+    if config.get('experimental'):
+        return f"# #{row['number']} 固定 Bot 规则迁移实验\n\n本批使用八个已冻结版本及两个平台基准，不改写 Bot、不重新提交。各变体的实际地形种子均为 11，完整配置见 RULES.md。原 Bot 的迁移表现与经过新规则适配后的策略能力分别评估。\n"
     pileup = "；4 人局三船以上同格全部沉没" if any(config["setups"][str(m)]["rules"].get("PILEUP_WRECK_SIZE") for m in config["modes"]) else ""
     task = row["prompt"].strip() or DEFAULT_PROMPT.format(
         title=row["title"], pileup=pileup, modes=" / ".join(MODE_NAMES[m] for m in config["modes"]))
@@ -312,7 +327,8 @@ def render_map(mode, seed, setup):
     """Terrain, halite and factories of one map, by running the engine for one turn
     with idle local players (our own trivial script, not uploaded code). None if the
     engine is unavailable."""
-    if not S.ENGINE.is_file():
+    engine = S.EXPERIMENT_ENGINE if setup['rules'].get('RULES_VERSION',1)>=2 else S.ENGINE
+    if not engine.is_file():
         return None
     with tempfile.TemporaryDirectory() as work:
         idle = f"{work}/idle.py"
@@ -320,7 +336,7 @@ def render_map(mode, seed, setup):
             f.write("import sys\nsys.stdin.readline()\nprint('idle',flush=True)\nfor _ in sys.stdin: print('',flush=True)\n")
         with open(f"{work}/rules.json", "w") as f:
             json.dump(setup["rules"], f)
-        argv = [str(S.ENGINE), "--results-as-json", "--no-compression", "--width", str(setup["width"]), "--height", str(setup["height"]),
+        argv = [str(engine), "--results-as-json", "--no-compression", "--width", str(setup["width"]), "--height", str(setup["height"]),
                 "--turn-limit", "1", "--seed", str(seed), "-c", f"{work}/rules.json", "-i", work,
                 *[f"python3 -B {idle}" for _ in range(mode)]]
         try:
@@ -390,6 +406,8 @@ def kit(db, row, config, origin, version_rows):
     offered = list(dict.fromkeys(([config["base_version_id"]] if config["base_version_id"] else []) + config["downloads"]))
     rows = version_rows(db, offered)
     with zipfile.ZipFile(buffer, "w") as archive:
+        if config.get('experimental'):
+            put('EXPERIMENTS.json', json.dumps({'scenarios':config['scenarios'],'roster':config['roster']},ensure_ascii=False,indent=2))
         bots = []
         for vid in offered:
             v = rows.get(vid)

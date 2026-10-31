@@ -29,6 +29,23 @@ struct Constants {
     // Reefs follow the fractal generator's mirror symmetry instead of tile translation.
     bool MIRROR_REEFS = false;
 
+    // Contest #1 experiments. Defaults preserve the standing #0 rules.
+    unsigned long RULES_VERSION = 1;
+    bool SYMMETRIC_MAP = false;
+    unsigned long MAP_STYLE = 0; // noise, open, sparse, ring, central, veins
+    bool BOUNDED_MAP = false;
+    energy_type ORE_PER_PLAYER = 0;
+    bool FREE_MOVEMENT = false;
+    energy_type FIXED_MINING = 0;
+    unsigned long MAX_SHIPS = 0;
+    unsigned long SPAWN_INTERVAL = 1;
+    unsigned long RESPAWN_COOLDOWN = 0;
+    bool SAFE_FRIENDLY_SPAWN = false;
+    bool PILEUP_ENEMIES_ONLY = false;
+    unsigned long SCOUT_EVERY = 0;
+    dimension_type SCOUT_VISION_RADIUS = 6;
+    energy_type SCOUT_CAPACITY = 500;
+
     bool STRICT_ERRORS = false;                 /**< Whether strict error checking mode is enabled. */
 
     unsigned long MAX_PLAYERS = 16;             /**< The maximum number of players. */

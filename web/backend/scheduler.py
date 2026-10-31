@@ -297,6 +297,9 @@ def create_job(user_id, name, version_ids, modes, seeds, rotate=False, ranked=Fa
 
 def match_dict(row):
     item = dict(row)
+    if item['status'] in ('remote_queued', 'remote_running'):
+        item['status'] = item['status'].removeprefix('remote_')
+        item['execution_host'] = 'txcloud'
     item["seats"] = [public_seat(s) for s in json.loads(item.pop("seat_json"))]
     item["result"] = (
         json.loads(item.pop("result_json")) if item.get("result_json") else None
@@ -327,6 +330,9 @@ def job_dict(db, row):
             (item["id"],),
         ).fetchall()
     )
+    for remote, local in [('remote_queued', 'queued'), ('remote_running', 'running')]:
+        if remote in counts:
+            counts[local] = counts.get(local, 0) + counts.pop(remote)
     item["counts"] = counts
     item["retryable"] = bool(counts.get("failed")) and all(
         match_eligible(db, r["seat_json"])

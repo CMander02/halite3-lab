@@ -7,6 +7,7 @@ PROJECT = ROOT.parent
 DATA = Path(os.environ.get("HALITE_DATA_DIR", str(ROOT / "data"))).resolve()
 ORIGIN = os.environ.get("HALITE_APP_ORIGIN", "http://127.0.0.1:18383").rstrip("/")
 ENGINE = Path(os.environ.get("HALITE_ENGINE", str(PROJECT / "build/halite"))).resolve()
+EXPERIMENT_ENGINE = Path(os.environ.get('HALITE_EXPERIMENT_ENGINE', str(PROJECT / 'build/halite-experiment-1'))).resolve()
 BWRAP = os.environ.get("HALITE_BWRAP", "/usr/local/lib/halite3/bwrap")
 CXX = os.environ.get("HALITE_CXX", "/usr/bin/g++")
 MAX_UPLOAD = 5 * 1024 * 1024

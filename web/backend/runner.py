@@ -134,6 +134,7 @@ def run_match(match):
         "seconds": S.MAX_GAME_SECONDS,
         **configuration,
         **configuration.get("setups", {}).get(str(match["mode"]), {}),
+        **configuration.get("setups_by_seed", {}).get(f"{match['mode']}:{match['seed']}", {}),
     }
     names = units_for(match)
     process = None
@@ -186,7 +187,7 @@ def run_match(match):
             "--turn-limit",
             str(configuration["turns"]),
             "--seed",
-            str(match["seed"]),
+            str(configuration.get("map_seed", match["seed"])),
             "-c",
             str(rules),
             "-i",

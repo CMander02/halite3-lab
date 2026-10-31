@@ -24,6 +24,22 @@ void to_json(nlohmann::json &json, const Constants &constants) {
             FIELD_TO_JSON(LIGHT_SHIP_COLLISIONS),
             FIELD_TO_JSON(PILEUP_WRECK_SIZE),
             FIELD_TO_JSON(MIRROR_REEFS),
+            FIELD_TO_JSON(RULES_VERSION),
+            FIELD_TO_JSON(SYMMETRIC_MAP),
+            FIELD_TO_JSON(MAP_STYLE),
+            FIELD_TO_JSON(BOUNDED_MAP),
+            FIELD_TO_JSON(ORE_PER_PLAYER),
+            FIELD_TO_JSON(FREE_MOVEMENT),
+            FIELD_TO_JSON(FIXED_MINING),
+            FIELD_TO_JSON(MAX_SHIPS),
+            FIELD_TO_JSON(SPAWN_INTERVAL),
+            FIELD_TO_JSON(RESPAWN_COOLDOWN),
+            FIELD_TO_JSON(SAFE_FRIENDLY_SPAWN),
+            FIELD_TO_JSON(PILEUP_ENEMIES_ONLY),
+            FIELD_TO_JSON(SCOUT_EVERY),
+            FIELD_TO_JSON(SCOUT_VISION_RADIUS),
+            FIELD_TO_JSON(SCOUT_CAPACITY),
+
             FIELD_TO_JSON(STRICT_ERRORS),
 
             FIELD_TO_JSON(MAX_PLAYERS),
@@ -77,6 +93,22 @@ void from_json(const nlohmann::json &json, Constants &constants) {
     constants.LIGHT_SHIP_COLLISIONS = json.value("LIGHT_SHIP_COLLISIONS", constants.LIGHT_SHIP_COLLISIONS);
     constants.PILEUP_WRECK_SIZE = json.value("PILEUP_WRECK_SIZE", constants.PILEUP_WRECK_SIZE);
     constants.MIRROR_REEFS = json.value("MIRROR_REEFS", constants.MIRROR_REEFS);
+    constants.RULES_VERSION = json.value("RULES_VERSION", constants.RULES_VERSION);
+    constants.SYMMETRIC_MAP = json.value("SYMMETRIC_MAP", constants.SYMMETRIC_MAP);
+    constants.MAP_STYLE = json.value("MAP_STYLE", constants.MAP_STYLE);
+    constants.BOUNDED_MAP = json.value("BOUNDED_MAP", constants.BOUNDED_MAP);
+    constants.ORE_PER_PLAYER = json.value("ORE_PER_PLAYER", constants.ORE_PER_PLAYER);
+    constants.FREE_MOVEMENT = json.value("FREE_MOVEMENT", constants.FREE_MOVEMENT);
+    constants.FIXED_MINING = json.value("FIXED_MINING", constants.FIXED_MINING);
+    constants.MAX_SHIPS = json.value("MAX_SHIPS", constants.MAX_SHIPS);
+    constants.SPAWN_INTERVAL = json.value("SPAWN_INTERVAL", constants.SPAWN_INTERVAL);
+    constants.RESPAWN_COOLDOWN = json.value("RESPAWN_COOLDOWN", constants.RESPAWN_COOLDOWN);
+    constants.SAFE_FRIENDLY_SPAWN = json.value("SAFE_FRIENDLY_SPAWN", constants.SAFE_FRIENDLY_SPAWN);
+    constants.PILEUP_ENEMIES_ONLY = json.value("PILEUP_ENEMIES_ONLY", constants.PILEUP_ENEMIES_ONLY);
+    constants.SCOUT_EVERY = json.value("SCOUT_EVERY", constants.SCOUT_EVERY);
+    constants.SCOUT_VISION_RADIUS = json.value("SCOUT_VISION_RADIUS", constants.SCOUT_VISION_RADIUS);
+    constants.SCOUT_CAPACITY = json.value("SCOUT_CAPACITY", constants.SCOUT_CAPACITY);
+
     constants.STRICT_ERRORS = json.value("STRICT_ERRORS", constants.STRICT_ERRORS);
     constants.MAX_PLAYERS = json.value("MAX_PLAYERS", constants.MAX_PLAYERS);
     constants.DEFAULT_MAP_WIDTH = json.value("DEFAULT_MAP_WIDTH", constants.DEFAULT_MAP_WIDTH);
@@ -111,6 +143,14 @@ void from_json(const nlohmann::json &json, Constants &constants) {
     }
     if (constants.VISION_RADIUS < 0 || constants.REEF_PERCENT > 40) {
         throw std::runtime_error("VISION_RADIUS must be nonnegative; REEF_PERCENT must be <= 40");
+    }
+    if (constants.SPAWN_INTERVAL < 1 || constants.SPAWN_INTERVAL > 100 || constants.RESPAWN_COOLDOWN > 100 ||
+        constants.MAP_STYLE > 5 || constants.RULES_VERSION > 2 || constants.MAX_SHIPS > 1000 ||
+        constants.MOVE_COST_RATIO == 0 || constants.INSPIRED_MOVE_COST_RATIO == 0 ||
+        constants.EXTRACT_RATIO == 0 || constants.INSPIRED_EXTRACT_RATIO == 0 ||
+        constants.MAX_ENERGY <= 0 || constants.SCOUT_CAPACITY <= 0 || constants.SCOUT_VISION_RADIUS < 0 ||
+        constants.ORE_PER_PLAYER < 0 || constants.FIXED_MINING < 0) {
+        throw std::runtime_error("Invalid experimental rule constants");
     }
     if (constants.PILEUP_WRECK_SIZE == 1) {
         throw std::runtime_error("PILEUP_WRECK_SIZE must be 0 (disabled) or at least 2");

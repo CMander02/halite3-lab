@@ -46,6 +46,7 @@ public:
     const ordered_id_map<Player, Player> &get_players() const { return players; }
     const Player &get_player(const Player::id_type &id) const { return players.at(id); }
     unsigned long long map_total_energy{}; /**< The total energy remaining on the map. */
+    unsigned long turn_number = 0;
 
     /**
      * Get a player by ID.

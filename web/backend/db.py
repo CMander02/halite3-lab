@@ -49,6 +49,8 @@ def initialize():
         from . import admin, analytics, contests, profiles, rule_analytics
 
         profiles.migrate(db)
+        if 'rating_scope' not in {row['name'] for row in db.execute('PRAGMA table_info(jobs)')}:
+            db.execute("ALTER TABLE jobs ADD COLUMN rating_scope TEXT NOT NULL DEFAULT 'global'")
         admin.migrate(db)
         contests.migrate(db)
         rule_analytics.migrate(db)

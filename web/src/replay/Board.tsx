@@ -13,6 +13,7 @@ const INK = "#0a1a4a";
 
 // 5x5 hull, bow pointing up; rotated by the last move direction.
 const HULL = ["..#..", ".###.", ".###.", "#####", "#.#.#"];
+const SCOUT_HULL = ["#.#.#", "..#..", ".###.", "..#..", ".#.#."];
 const rotate = (x: number, y: number, dir: string): [number, number] =>
   dir === "e" ? [4 - y, x] : dir === "s" ? [4 - x, 4 - y] : dir === "w" ? [y, 4 - x] : [x, y];
 
@@ -73,9 +74,10 @@ export default function Board({
               ...state.dropoffs.filter((d) => d.owner === player),
             ];
       const radius = replay.GAME_CONSTANTS.VISION_RADIUS;
-      const visible = (x: number, y: number) => perspective === "all" || sources.some((s) => wrappedDistance(x, y, s.x, s.y, w, h) <= radius);
+      const visible = (x: number, y: number) => perspective === "all" || !replay.GAME_CONSTANTS.FOG_ENABLED || sources.some((s) => wrappedDistance(x, y, s.x, s.y, w, h, replay.GAME_CONSTANTS.BOUNDED_MAP) <= ('scout' in s && s.scout ? replay.GAME_CONSTANTS.SCOUT_VISION_RADIUS ?? radius : radius));
 
-      const sub = cell >= 12 ? 4 : cell >= 6 ? 2 : 1;
+      const coarse = (replay.GAME_CONSTANTS.MAX_CELL_PRODUCTION || 1000) <= 15;
+      const sub = cell >= (coarse ? 4 : 12) ? 4 : cell >= (coarse ? 2 : 6) ? 2 : 1;
       const step = cell / sub;
       for (let y = 0; y < h; y++)
         for (let x = 0; x < w; x++) {
@@ -95,7 +97,7 @@ export default function Board({
             ctx.fillRect(left, top, cell, cell);
             continue;
           }
-          const amount = Math.min(1, state.halite[y * w + x] / 1000);
+          const amount = Math.min(1, state.halite[y * w + x] / (replay.GAME_CONSTANTS.MAX_CELL_PRODUCTION || 1000));
           if (amount <= 0) continue;
           ctx.fillStyle = amount > 0.45 ? "#1f4fff" : "#8ea8ff";
           const threshold = amount > 0.45 ? (amount - 0.3) / 0.7 : amount / 0.45;
@@ -156,13 +158,14 @@ export default function Board({
           if (cell < 7) {
             ctx.fillStyle = color;
             ctx.fillRect(left, top, cell, cell);
+            if (ship.scout) { ctx.fillStyle = PAPER; ctx.fillRect(left+Math.floor(cell/2),top+Math.floor(cell/2),1,1); }
             continue;
           }
           const unit = Math.floor((cell - 2) / 5);
           const pad = Math.floor((cell - unit * 5) / 2);
           // ink silhouette one unit larger for contrast, then the hull
           ctx.fillStyle = color;
-          HULL.forEach((row, y) =>
+          (ship.scout ? SCOUT_HULL : HULL).forEach((row, y) =>
             [...row].forEach((c, x) => {
               if (c !== "#") return;
               const [rx, ry] = rotate(x, y, dir);
@@ -170,7 +173,8 @@ export default function Board({
             }),
           );
           // cargo gauge: ink pixels filling from the stern
-          const cargo = Math.round((ship.energy / 1000) * 3);
+          const capacity = ship.scout ? replay.GAME_CONSTANTS.SCOUT_CAPACITY ?? replay.GAME_CONSTANTS.MAX_ENERGY : replay.GAME_CONSTANTS.MAX_ENERGY;
+          const cargo = Math.round((ship.energy / capacity) * 3);
           if (cargo > 0) {
             ctx.fillStyle = INK;
             for (let i = 0; i < cargo; i++) {

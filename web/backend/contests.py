@@ -177,6 +177,9 @@ def version_rows(db, ids):
 def finalists(db, contest_id):
     """{user_id: entry} — each user's picked submission, else their latest one."""
     chosen = {}
+    contest = db.execute('SELECT config_json FROM contests WHERE id=?', (contest_id,)).fetchone()
+    if contest and json.loads(contest['config_json']).get('experimental'):
+        return {r['id']: r for r in db.execute('SELECT * FROM contest_entries WHERE contest_id=? ORDER BY seq', (contest_id,))}
     for row in db.execute(
         "SELECT * FROM contest_entries WHERE contest_id=? ORDER BY user_id,picked DESC,seq DESC", (contest_id,)
     ):
@@ -187,6 +190,8 @@ def finalists(db, contest_id):
 def current_entries(db, contest):
     """Entry ids that are ranked: each user's finalist, or in contest #0 (where people
     keep several different bots) the latest submission of every bot."""
+    if json.loads(contest['config_json']).get('experimental'):
+        return {r['id'] for r in db.execute('SELECT id FROM contest_entries WHERE contest_id=?', (contest['id'],))}
     if not json.loads(contest["config_json"]).get("practice"):
         return {e["id"] for e in finalists(db, contest["id"]).values()}
     return {row["id"] for row in db.execute(
@@ -286,6 +291,8 @@ def target_snapshots(db, config):
 def start_final(db, contest):
     """Queue the final evaluation (cancelling a previous attempt's queued games)."""
     config = json.loads(contest["config_json"])
+    if config.get('experimental'):
+        raise HTTPException(409, '此规则实验使用固定的 txcloud 队列，请通过实验维护脚本管理。')
     if contest["final_job_id"]:
         db.execute("UPDATE matches SET status='cancelled' WHERE job_id=? AND status='queued'", (contest["final_job_id"],))
     chosen = finalists(db, contest["id"])
@@ -303,6 +310,9 @@ def start_final(db, contest):
 
 def finalize(db, contest):
     """Freeze the final standings and publish every game of the contest."""
+    if json.loads(contest['config_json']).get('experimental') and db.execute(
+        "SELECT 1 FROM matches WHERE job_id=? AND status IN ('remote_queued','remote_running','queued','running','failed') LIMIT 1", (contest['final_job_id'],)).fetchone():
+        raise HTTPException(409, 'txcloud 规则实验尚未全部成功完成。')
     data = {"computed_at": now(), "final": compute(db, contest, "final"), "bench": compute(db, contest, "bench")}
     db.execute("UPDATE contests SET finalized_at=?,standings_json=?,updated_at=? WHERE id=?",
                (now(), json.dumps(data), now(), contest["id"]))
@@ -329,7 +339,7 @@ def tick():
 # ---------------------------------------------------------------- standings
 
 
-def compute(db, contest, stage):
+def compute(db, contest, stage, scenario=None):
     """Standings per mode and overall for the bench or the final stage.
 
     Every row is one version (a submission or a target). Raw ELO is the same
@@ -343,6 +353,12 @@ def compute(db, contest, stage):
         WHERE j.contest_id=? AND j.kind IN (?,?) AND (j.kind<>'contest-final' OR j.id=?) AND m.status='complete' AND m.result_json IS NOT NULL""",
         (contest["id"], *STAGE_KINDS[stage], contest["final_job_id"]),
     ).fetchall()
+    if config.get('experimental'):
+        key = scenario or config['primary_scenario']
+        selected = next((s for s in config['scenarios'] if s['key'] == key), None)
+        if selected is None:
+            raise HTTPException(422, '未知规则实验。')
+        matches = [m for m in matches if m['seed'] in selected['match_seeds']]
     entries = {row["version_id"]: row for row in db.execute("SELECT * FROM contest_entries WHERE contest_id=?", (contest["id"],))}
     targets = set(config["targets"])
     current = current_entries(db, contest)
@@ -427,6 +443,9 @@ def stage_progress(db, contest, stage):
         WHERE j.contest_id=? AND j.kind IN (?,?) AND (j.kind<>'contest-final' OR j.id=?) GROUP BY m.status""",
         (contest["id"], *STAGE_KINDS[stage], contest["final_job_id"]),
     ).fetchall())
+    for remote, local in [('remote_queued', 'queued'), ('remote_running', 'running')]:
+        if remote in counts:
+            counts[local] = counts.get(local, 0) + counts.pop(remote)
     return {"counts": counts, "total": sum(counts.values())}
 
 
@@ -442,6 +461,7 @@ def public_view(db, row, user, detail=False):
     ).fetchone()
     item = {
         "id": row["id"], "number": row["number"], "slug": row["slug"], "title": row["title"], "summary": row["summary"], "status": state,
+        "experimental": bool(config.get('experimental')),
         "practice": bool(config.get("practice")),
         "visible_at": row["visible_at"], "open_at": row["open_at"], "close_at": row["close_at"],
         "published": bool(row["published"]), "final_started_at": row["final_started_at"], "finalized_at": row["finalized_at"],
@@ -482,7 +502,7 @@ def public_view(db, row, user, detail=False):
         "downloads": [describe(v) for v in config["downloads"] if describe(v)],
         "bench_rotate": config.get("bench_rotate", True), "final_rounds": config.get("final_rounds", 4),
         "auto_final": config.get("auto_final", True),
-        "bench_games": len(bench_games(config, {"id": "candidate"}, [{"id": t} for t in config["targets"]])),
+        "bench_games": 0 if config.get('experimental') else len(bench_games(config, {"id": "candidate"}, [{"id": t} for t in config["targets"]])),
         "progress": {"bench": stage_progress(db, row, "bench"), "final": stage_progress(db, row, "final")},
     })
     if admin:
@@ -537,7 +557,7 @@ def contest_standings(key: str, request: Request, stage: str = "bench"):
         if row["standings_json"]:
             frozen = json.loads(row["standings_json"])
             return {"stage": stage, "final": True, "computed_at": frozen["computed_at"], "standings": frozen[stage]}
-        if stage == "final" and not (user and user["is_admin"]):
+        if stage == "final" and not (user and user["is_admin"]) and not json.loads(row['config_json']).get('experimental'):
             raise HTTPException(403, "正式评测结果在比赛结束后公布。")
         if state in ("draft", "upcoming") and not (user and user["is_admin"]):
             return {"stage": stage, "final": False, "computed_at": now(), "standings": {"overall": []}}
@@ -846,6 +866,8 @@ def update_contest(contest_id: str, payload: ContestIn, request: Request):
         if row["finalized_at"]:
             raise HTTPException(409, "比赛结果已公布，不能再修改。")
         old = json.loads(row["config_json"])
+        if old.get('experimental'):
+            raise HTTPException(409, '固定的规则实验配置不能通过普通比赛表单修改。')
         config = validate(db, payload)
         if old.get("practice"):
             config["practice"], config["auto_final"] = True, False

@@ -44,9 +44,11 @@ export function wrappedDistance(
   by: number,
   w: number,
   h: number,
+  bounded = false,
 ) {
   const dx = Math.abs(ax - bx),
     dy = Math.abs(ay - by);
+  if (bounded) return dx + dy;
   return Math.min(dx, w - dx) + Math.min(dy, h - dy);
 }
 

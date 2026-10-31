@@ -16,7 +16,7 @@ COLUMNS = ['kills', 'deaths', 'assists', 'robbed', 'lost', 'delivered', 'mined',
 DEFAULT_VISION_RADIUS = 4
 
 
-def _territory(width, height, sources, players):
+def _territory(width, height, sources, players, bounded=False):
     """Share of cells whose unique nearest ship/structure (torus BFS) belongs to each player."""
     owner = [-1] * (width * height)
     dist = [-1] * (width * height)
@@ -33,6 +33,8 @@ def _territory(width, height, sources, players):
         index = queue.popleft()
         y, x = divmod(index, width)
         for nx, ny in ((x + 1) % width, y), ((x - 1) % width, y), (x, (y + 1) % height), (x, (y - 1) % height):
+            if bounded and abs(nx-x)+abs(ny-y)>1:
+                continue
             other = ny * width + nx
             if dist[other] == -1:
                 dist[other] = dist[index] + 1
@@ -47,15 +49,19 @@ def _territory(width, height, sources, players):
     return [count / (width * height) for count in counts]
 
 
-def _vision(width, height, sources, players, radius):
+def _vision(width, height, sources, players, radius, bounded=False):
     """Share of cells within torus Manhattan distance `radius` of each player's ships/structures."""
     seen = [set() for _ in range(players)]
-    for x, y, pid in sources:
+    for source in sources:
+        x, y, pid = source[:3]
+        source_radius = source[3] if len(source)>3 else radius
         cells = seen[pid]
-        for dx in range(-radius, radius + 1):
-            span = radius - abs(dx)
+        for dx in range(-source_radius, source_radius + 1):
+            span = source_radius - abs(dx)
             column = (x + dx) % width
             for dy in range(-span, span + 1):
+                if bounded and not (0<=x+dx<width and 0<=y+dy<height):
+                    continue
                 cells.add(((y + dy) % height) * width + column)
     return [min(len(cells), width * height) / (width * height) for cells in seen]
 
@@ -101,6 +107,8 @@ def analyze(replay):
     # Territory and vision: average cell shares over evenly spaced turns. Vision uses the
     # fog-of-war radius (what the player's own units light up), even when fog was off.
     radius = int(replay.get('GAME_CONSTANTS', {}).get('VISION_RADIUS', DEFAULT_VISION_RADIUS))
+    constants = replay.get('GAME_CONSTANTS', {})
+    bounded = bool(constants.get('BOUNDED_MAP'))
     structures = [(p['factory_location']['x'], p['factory_location']['y'], p['player_id']) for p in replay['players']]
     step = max(1, len(frames) // TERRITORY_SAMPLES)
     shares = [0.0] * players
@@ -112,9 +120,11 @@ def analyze(replay):
             if event.get('type') == 'construct' and event.get('owner_id') is not None:
                 structures.append((event['location']['x'], event['location']['y'], event['owner_id']))
         sources = list(structures) + [(ship['x'], ship['y'], int(pid)) for pid, ships in frame.get('entities', {}).items() for ship in ships.values()]
-        for pid, share in enumerate(_territory(width, height, sources, players)):
+        for pid, share in enumerate(_territory(width, height, sources, players, bounded)):
             shares[pid] += share
-        for pid, share in enumerate(_vision(width, height, sources, players, radius)):
+        vision_sources = list(structures) + [(ship['x'], ship['y'], int(pid), int(constants.get('SCOUT_VISION_RADIUS',radius)) if ship.get('scout') else radius)
+                                             for pid, ships in frame.get('entities',{}).items() for ship in ships.values()]
+        for pid, share in enumerate(_vision(width, height, vision_sources, players, radius, bounded)):
             seen[pid] += share
         samples += 1
     for pid in range(players):

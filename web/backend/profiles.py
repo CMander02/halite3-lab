@@ -185,7 +185,8 @@ BOARD_SQL = '''SELECT p.version_id,v.version,v.bot_id,b.name AS bot_name,b.built
     AVG(p.territory) AS territory,AVG(p.vision) AS vision,AVG(p.ships_built) AS ships_built
     FROM match_players p JOIN matches m ON m.id=p.match_id JOIN versions v ON v.id=p.version_id
     JOIN bots b ON b.id=v.bot_id LEFT JOIN users u ON u.id=b.owner_id
-    WHERE m.status='complete' AND m.public=1 AND (b.builtin=1 OR v.language='cpp') {mode} GROUP BY p.version_id'''
+    WHERE m.status='complete' AND m.public=1 AND m.job_id IN (SELECT id FROM jobs WHERE rating_scope='global')
+    AND (b.builtin=1 OR v.language='cpp') {mode} GROUP BY p.version_id'''
 
 
 @router.get('/api/leaderboard/stats')

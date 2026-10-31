@@ -18,6 +18,9 @@ struct Entity final : public Enumerated<Entity> {
     const player_id_type owner; /**< Owner of the entity. */
     energy_type energy;         /**< Energy of the entity. */
     bool was_captured;          /**< Track whether this entity was captured for statistics purposes. */
+    bool scout = false;
+    energy_type capacity() const { return scout ? Constants::get().SCOUT_CAPACITY : Constants::get().MAX_ENERGY; }
+    dimension_type vision() const { return scout ? Constants::get().SCOUT_VISION_RADIUS : Constants::get().VISION_RADIUS; }
     bool is_inspired;           /**< Track whether or not this entity is currently inspired. */
 
     /**

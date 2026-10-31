@@ -192,6 +192,7 @@ export interface MatchupMatrix {
   mode: number | null;
 }
 export interface Ship {
+  scout?: boolean;
   x: number;
   y: number;
   energy: number;
@@ -228,6 +229,10 @@ export interface Replay {
     LIGHT_SHIP_COLLISIONS: boolean;
     PILEUP_WRECK_SIZE?: number;
     MAX_ENERGY: number;
+    MAX_CELL_PRODUCTION?: number;
+    BOUNDED_MAP?: boolean;
+    SCOUT_CAPACITY?: number;
+    SCOUT_VISION_RADIUS?: number;
   };
   map_generator_seed: number;
   lab_replay_schema: string;
@@ -410,6 +415,7 @@ export interface ContestSummary {
   my_submissions?: number;
 }
 export interface Contest extends ContestSummary {
+  experimental?: boolean;
   description: string;
   /** Written rules generated from the frozen configuration plus the admin's extra rules (Markdown). */
   rules_text: string;

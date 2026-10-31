@@ -28,7 +28,7 @@ from starlette.concurrency import run_in_threadpool
 from . import settings as S
 from .eligibility import CPP_ONLY, eligible
 from .db import connect, initialize, now
-from . import admin, contests, profiles, submissions, rule_analytics
+from . import admin, contests, profiles, submissions, rule_analytics, experiments
 from .security import (
     COOKIE,
     PASSWORDS,
@@ -69,6 +69,7 @@ app.include_router(rule_analytics.router)
 app.include_router(admin.router)
 app.include_router(submissions.router)
 app.include_router(contests.router)
+app.include_router(experiments.router)
 
 
 @app.middleware("http")
@@ -657,6 +658,9 @@ def retry_job(job_id: str, request: Request):
     user = user_for(request)
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
+        job = db.execute('SELECT config_json FROM jobs WHERE id=? AND owner_id=?', (job_id, user['id'])).fetchone()
+        if job and json.loads(job['config_json']).get('execution_host') == 'txcloud':
+            raise HTTPException(409, '此任务在 txcloud 执行，请在远端队列重试。')
         if not db.execute(
             "SELECT 1 FROM jobs WHERE id=? AND owner_id=?", (job_id, user["id"])
         ).fetchone():
@@ -677,6 +681,9 @@ def retry_job(job_id: str, request: Request):
 def cancel_job(job_id: str, request: Request):
     user = user_for(request)
     with connect() as db:
+        job = db.execute('SELECT config_json FROM jobs WHERE id=? AND owner_id=?', (job_id, user['id'])).fetchone()
+        if job and json.loads(job['config_json']).get('execution_host') == 'txcloud':
+            raise HTTPException(409, '此任务在 txcloud 执行，请先停止远端任务再取消。')
         if not db.execute(
             "SELECT 1 FROM jobs WHERE id=? AND owner_id=?", (job_id, user["id"])
         ).fetchone():

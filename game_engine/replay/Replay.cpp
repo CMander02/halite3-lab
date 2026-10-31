@@ -29,6 +29,7 @@ void to_json(nlohmann::json &json, const EntityInfo &info) {
             INFO_FIELD_TO_JSON(y),
             INFO_FIELD_TO_JSON(is_inspired),
             INFO_FIELD_TO_JSON(energy)};
+    if (Constants::get().RULES_VERSION >= 2) json["scout"] = info.scout;
 }
 
 

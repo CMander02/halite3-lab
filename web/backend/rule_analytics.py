@@ -36,6 +36,8 @@ def analyze(replay):
     collisions = Counter()
     unknown = 0
     frames = replay['full_frames']
+    scout_ids = {int(sid): ship.get('scout',False) for frame in frames
+                 for group in frame.get('entities',{}).values() for sid,ship in group.items()}
     for frame in frames:
         events = frame.get('events', [])
         # A final snapshot has no actions/events and must not add another ship-turn.
@@ -69,9 +71,13 @@ def analyze(replay):
                 if not direction:
                     continue
                 ratio = constants.get('INSPIRED_MOVE_COST_RATIO', 10) if ship.get('is_inspired') else constants.get('MOVE_COST_RATIO', 10)
-                cost = grid[ship['y'] * width + ship['x']] // ratio
-                x, y = (ship['x'] + direction[0]) % width, (ship['y'] + direction[1]) % height
-                if ship['energy'] >= cost and (x, y) not in reefs:
+                cost = 0 if constants.get('FREE_MOVEMENT') else grid[ship['y'] * width + ship['x']] // ratio
+                x, y = ship['x'] + direction[0], ship['y'] + direction[1]
+                if constants.get('BOUNDED_MAP'):
+                    x, y = max(0,min(width-1,x)), max(0,min(height-1,y))
+                else:
+                    x, y = x % width, y % height
+                if ship['energy'] >= cost and (x, y) not in reefs and (x,y) != (ship['x'],ship['y']):
                     ship.update(x=x, y=y, energy=ship['energy'] - cost, moved=True)
                     seats[ship['pid']]['moving_turns'] += 1
         locations = defaultdict(dict)
@@ -89,7 +95,8 @@ def analyze(replay):
                             if structures.get(point) == ship['pid']:
                                 ship['energy'] = 0
                     deposited = True
-                locations[position][int(event['id'])] = dict(pid=event['owner_id'], energy=event.get('energy', 0), start=0, moved=False, born=True)
+                locations[position][int(event['id'])] = dict(pid=event['owner_id'], energy=event.get('energy', 0), start=0, moved=False, born=True,
+                                                           scout=scout_ids.get(int(event['id']),False))
             elif event['type'] == 'shipwreck':
                 group = locations[position]
                 dead = {int(sid) for sid in event['ships']}
@@ -102,13 +109,15 @@ def analyze(replay):
                 owners = tuple(sorted({s['pid'] for s in group.values()}))
                 mixed = len(owners) > 1
                 threshold = constants.get('PILEUP_WRECK_SIZE', 0)
-                outcome = 'capture' if survivors else 'pileup' if threshold > 0 and len(group) >= threshold else 'tie' if constants.get('LIGHT_SHIP_COLLISIONS') else 'upstream'
+                pileup = threshold > 0 and len(group) >= threshold and (not constants.get('PILEUP_ENEMIES_ONLY') or mixed)
+                outcome = 'capture' if survivors else 'pileup' if pileup else 'tie' if constants.get('LIGHT_SHIP_COLLISIONS') else 'upstream'
                 loot = 0
                 settlement = {sid: ship['energy'] for sid, ship in group.items()}
                 if survivors:
                     winner = group[next(iter(survivors))]
                     total = sum(group[s]['energy'] for s in dead)
-                    gain = min(total, max(0, constants.get('MAX_ENERGY', 1000) - winner['energy']))
+                    capacity = constants.get('SCOUT_CAPACITY',500) if winner.get('scout') else constants.get('MAX_ENERGY',1000)
+                    gain = min(total, max(0, capacity - winner['energy']))
                     loot = gain
                     winner['energy'] += gain
                 # Aggregate by participant owners and outcome, retaining denominators.
@@ -132,6 +141,8 @@ def analyze(replay):
             grid[cell['y'] * width + cell['x']] = cell['production']
     config = {k: constants.get(k) for k in ('VISION_RADIUS', 'FOG_ENABLED', 'REEF_PERCENT', 'MIRROR_REEFS', 'PILEUP_WRECK_SIZE', 'LIGHT_SHIP_COLLISIONS', 'INSPIRATION_ENABLED', 'MOVE_COST_RATIO', 'MAX_ENERGY')}
     config.update(width=width, height=height, turns=constants['MAX_TURNS'])
+    if constants.get('RULES_VERSION',1) >= 2:
+        config = dict(constants, width=width, height=height, turns=constants['MAX_TURNS'])
     return dict(config=config, initial=initial, remaining=sum(grid), reefs=len(reefs), cells=width * height,
                 seats=seats, unknown=unknown,
                 events=[dict(owners=list(owners), enemy=mixed, outcome=outcome, count=count)
@@ -153,7 +164,8 @@ def report(db, mode=None, group='all'):
     selected = {e['version_id'] for e in top} if group == 'top' else allowed
     query = '''SELECT m.id,m.mode,m.seat_json,m.finished_at,s.summary_json FROM matches m
         LEFT JOIN match_rule_stats s ON s.match_id=m.id AND s.schema_version=?
-        WHERE m.public=1 AND m.status='complete' AND m.result_json IS NOT NULL'''
+        WHERE m.public=1 AND m.status='complete' AND m.result_json IS NOT NULL
+        AND m.job_id IN (SELECT id FROM jobs WHERE rating_scope='global')'''
     params = [SCHEMA]
     if mode is not None:
         query += ' AND m.mode=?'

@@ -38,6 +38,7 @@ struct EntityInfo {
     dimension_type y;
     energy_type energy;
     bool is_inspired;
+    bool scout;
 
     friend void to_json(nlohmann::json &json, const EntityInfo &entity_info);
 
@@ -47,7 +48,7 @@ struct EntityInfo {
      * @param entity Entity  we are interested in
      */
     EntityInfo(Location location, const Entity &entity) :
-        x(location.x), y(location.y), energy(entity.energy), is_inspired(entity.is_inspired) {}
+        x(location.x), y(location.y), energy(entity.energy), is_inspired(entity.is_inspired), scout(entity.scout) {}
 
 };
 

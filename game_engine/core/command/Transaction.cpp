@@ -51,7 +51,9 @@ void dump_energy(Store &store, Entity &entity, const Location &location, Cell &c
 Entity::id_type collision_survivor(const Store &store, const std::vector<Entity::id_type> &ships) {
     if (!Constants::get().LIGHT_SHIP_COLLISIONS) return Entity::None;
     const auto pileup = Constants::get().PILEUP_WRECK_SIZE;
-    if (pileup > 0 && ships.size() >= pileup) return Entity::None;
+    bool enemies = false;
+    for (const auto &sid : ships) enemies |= store.get_entity(sid).owner != store.get_entity(ships.front()).owner;
+    if (pileup > 0 && ships.size() >= pileup && (!Constants::get().PILEUP_ENEMIES_ONLY || enemies)) return Entity::None;
     auto survivor = ships.front();
     auto minimum = store.get_entity(survivor).energy;
     bool tied = false;
@@ -69,13 +71,14 @@ void settle_collision(Store &store, Cell &cell, const Location &location,
     energy_type loot = 0;
     for (const auto &id : destroyed) {
         auto &entity = store.get_entity(id);
+        store.get_player(entity.owner).last_loss_turn = store.turn_number;
         if (Constants::get().LIGHT_SHIP_COLLISIONS) loot += entity.energy;
         else dump_energy(store, entity, location, cell, entity.energy);
         store.delete_entity(id);
     }
     if (survivor != Entity::None) {
         auto &winner = store.get_entity(survivor);
-        const auto gained = std::min(loot, Constants::get().MAX_ENERGY - winner.energy);
+        const auto gained = std::min(loot, winner.capacity() - winner.energy);
         winner.energy += gained;
         loot -= gained;
         store.get_player(winner.owner).add_entity(survivor, location);
@@ -212,7 +215,7 @@ void MoveTransaction::commit() {
             const auto cost = entity.is_inspired ?
                 Constants::get().INSPIRED_MOVE_COST_RATIO :
                 Constants::get().MOVE_COST_RATIO;
-            energy_type required = source.energy / cost;
+            energy_type required = Constants::get().FREE_MOVEMENT ? 0 : source.energy / cost;
 
             if (entity.energy < required) {
                 // Entity does not have enough energy, ignore command.
@@ -223,7 +226,7 @@ void MoveTransaction::commit() {
             auto target = location;
             map.move_location(target, command.direction);
             // A blocked move is a hold: no movement cost, and normal mining.
-            if (map.at(target).reef) continue;
+            if (map.at(target).reef || target == location) continue;
             causes.emplace(command.entity, command);
             // Decrease the entity's energy.
             entity.energy -= required;
@@ -336,9 +339,16 @@ void SpawnTransaction::commit() {
     for (const auto &[player_id, spawns] : commands) {
         for (const SpawnCommand &spawn : spawns) {
             auto &player = store.get_player(player_id);
-            player.energy -= cost;
             auto &cell = map.at(player.factory);
+            if (constants.MAX_SHIPS && player.entities.size() >= constants.MAX_SHIPS) continue;
+            if (player.last_spawn_turn && store.turn_number - player.last_spawn_turn < constants.SPAWN_INTERVAL) continue;
+            if (constants.RESPAWN_COOLDOWN && player.last_loss_turn && store.turn_number - player.last_loss_turn <= constants.RESPAWN_COOLDOWN) continue;
+            if (constants.SAFE_FRIENDLY_SPAWN && cell.entity != Entity::None && store.get_entity(cell.entity).owner == player_id) continue;
+            player.energy -= cost;
+            player.spawned++;
+            player.last_spawn_turn = store.turn_number;
             auto &entity = store.new_entity(0, player.id);
+            entity.scout = constants.SCOUT_EVERY > 0 && player.spawned % constants.SCOUT_EVERY == 0;
             player.add_entity(entity.id, player.factory);
             entity_updated(entity.id);
             event_generated<SpawnEvent>(player.factory, 0, player.id, entity.id);

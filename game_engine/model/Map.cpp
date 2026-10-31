@@ -16,6 +16,10 @@ namespace hlt {
 std::array<Location, Map::NEIGHBOR_COUNT> Map::get_neighbors(const Location &location) const {
     // Allow wrap around neighbors
     auto [x, y] = location;
+    if (Constants::get().BOUNDED_MAP) {
+        return {{{std::min(x + 1, width - 1), y}, {std::max(x - 1, 0L), y},
+                 {x, std::min(y + 1, height - 1)}, {x, std::max(y - 1, 0L)}}};
+    }
     return {{{(x + 1) % width, y},
              {(x - 1 + width) % width, y},
              {x, (y + 1) % height},
@@ -40,6 +44,7 @@ dimension_type Map::distance(const Location &from, const Location &to) const {
     const auto [to_x, to_y] = to;
     const auto x_dist = std::abs(from_x - to_x);
     const auto y_dist = std::abs(from_y - to_y);
+    if (Constants::get().BOUNDED_MAP) return x_dist + y_dist;
     return std::min(x_dist, width - x_dist) + std::min(y_dist, height - y_dist);
 }
 
@@ -69,6 +74,16 @@ std::ostream &operator<<(std::ostream &os, const Map &map) {
  */
 void Map::move_location(Location &location, const Direction &direction) const {
     auto &[x, y] = location;
+    if (Constants::get().BOUNDED_MAP) {
+        switch (direction) {
+        case Direction::North: y = std::max(0L, y - 1); break;
+        case Direction::South: y = std::min(height - 1, y + 1); break;
+        case Direction::East: x = std::min(width - 1, x + 1); break;
+        case Direction::West: x = std::max(0L, x - 1); break;
+        case Direction::Still: break;
+        }
+        return;
+    }
     switch (direction) {
     case Direction::North:
         y = (y + height - 1) % height;
