@@ -6,7 +6,7 @@ import { Empty, ModeLabel, Status, Tag } from "@/components/pixel";
 import { AvatarStack } from "@/components/UserAvatar";
 
 const kindLabel = (kind: string) =>
-  kind === "ranked" ? "基准评测" : kind === "ranked-multi" ? "多人评测" : kind === "demo" ? "公开示例" : "私人测试";
+  kind === "ranked" ? "基准评测" : kind === "ranked-multi" ? "多人评测" : kind === "demo" ? "公开示例" : kind === "contest-final" ? "比赛正式评测" : "私人测试";
 
 function winnerOf(match: Match) {
   if (!match.result) return null;

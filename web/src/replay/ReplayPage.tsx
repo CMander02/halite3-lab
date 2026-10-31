@@ -167,7 +167,7 @@ export default function ReplayPage({ id }: { id: string }) {
       </div>
       {m && (
         <div className="mr-auto flex items-center gap-2 text-ink-2 md:hidden">
-          <ModeLabel mode={m.mode} /> · 种子 {m.seed}
+          <ModeLabel mode={m.mode} /> · 种子 {replay.data?.map_generator_seed ?? m.seed}
         </div>
       )}
       {m && (
@@ -176,7 +176,7 @@ export default function ReplayPage({ id }: { id: string }) {
           <Tag>
             <ModeLabel mode={m.mode} />
           </Tag>
-          <Tag>种子 {m.seed}</Tag>
+          <Tag>种子 {replay.data?.map_generator_seed ?? m.seed}</Tag>
           {replay.data && (
             <Tag>
               {replay.data.production_map.width}×{replay.data.production_map.height}
@@ -329,17 +329,17 @@ export default function ReplayPage({ id }: { id: string }) {
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-ink-2">
           <dt>地图</dt>
           <dd className="m-0 text-ink">
-            {replay.data.production_map.width}×{replay.data.production_map.height} · 种子 {m.seed}
+            {replay.data.production_map.width}×{replay.data.production_map.height} · 种子 {replay.data?.map_generator_seed ?? m.seed}
           </dd>
           <dt>视野半径</dt>
           <dd className="m-0 text-ink">{replay.data.GAME_CONSTANTS.VISION_RADIUS}</dd>
           <dt>碰撞</dt>
           <dd className="m-0 text-ink">
             轻船抢矿 · 同重沉没
-            {replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE ? ` · ${replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE} 船以上全沉` : ""}
+            {replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE ? ` · ${replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE} 船以上${replay.data.GAME_CONSTANTS.PILEUP_ENEMIES_ONLY ? "且含敌方时" : ""}全沉` : ""}
           </dd>
           <dt>来源</dt>
-          <dd className="m-0 text-ink">{m.kind === "ranked" ? "固定基准评测" : m.kind === "ranked-multi" ? "多人基准评测" : m.kind === "demo" ? "公开示例" : "私人测试"}</dd>
+          <dd className="m-0 text-ink">{m.kind === "ranked" ? "固定基准评测" : m.kind === "ranked-multi" ? "多人基准评测" : m.kind === "demo" ? "公开示例" : m.kind === "contest-final" ? "比赛正式评测" : "私人测试"}</dd>
         </dl>
       )}
       {m?.can_view_logs && (

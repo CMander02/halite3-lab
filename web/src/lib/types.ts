@@ -228,6 +228,7 @@ export interface Replay {
     FOG_ENABLED: boolean;
     LIGHT_SHIP_COLLISIONS: boolean;
     PILEUP_WRECK_SIZE?: number;
+    PILEUP_ENEMIES_ONLY?: boolean;
     MAX_ENERGY: number;
     MAX_CELL_PRODUCTION?: number;
     BOUNDED_MAP?: boolean;

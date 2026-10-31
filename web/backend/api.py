@@ -646,7 +646,7 @@ def job_detail(job_id: str, request: Request):
         item["matches"] = [
             match_dict(r)
             for r in db.execute(
-                "SELECT m.*,j.kind,j.name AS job_name FROM matches m JOIN jobs j ON j.id=m.job_id WHERE m.job_id=? ORDER BY m.created_at,m.rowid",
+                "SELECT m.*,j.kind,j.name AS job_name,j.config_json AS job_config_json FROM matches m JOIN jobs j ON j.id=m.job_id WHERE m.job_id=? ORDER BY m.created_at,m.rowid",
                 (job_id,),
             )
         ]
@@ -726,7 +726,7 @@ def matches(
             f"SELECT COUNT(*) FROM matches m WHERE {where}", params
         ).fetchone()[0]
         rows = db.execute(
-            f"SELECT m.*,j.kind,j.name AS job_name FROM matches m JOIN jobs j ON j.id=m.job_id WHERE {where} ORDER BY m.created_at DESC,m.rowid DESC LIMIT 30 OFFSET ?",
+            f"SELECT m.*,j.kind,j.name AS job_name,j.config_json AS job_config_json FROM matches m JOIN jobs j ON j.id=m.job_id WHERE {where} ORDER BY m.created_at DESC,m.rowid DESC LIMIT 30 OFFSET ?",
             params + [offset],
         ).fetchall()
     return {"matches": [match_dict(r) for r in rows], "total": total}

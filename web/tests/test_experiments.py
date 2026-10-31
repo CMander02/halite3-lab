@@ -60,6 +60,13 @@ class ExperimentTest(unittest.TestCase):
             self.assertEqual(len(E.contests.finalists(db,first)),8)
             counts=dict(db.execute('SELECT status,COUNT(*) FROM matches WHERE job_id=? GROUP BY status',(contest['final_job_id'],)))
             self.assertEqual(counts,{'remote_queued':2240})
+        public_matches=self.client.get('/api/matches?contest=test-1').json()['matches']
+        self.assertTrue(public_matches)
+        for match in public_matches:
+            self.assertEqual(match['seed'],11)
+            self.assertNotIn('job_config_json',match)
+        match=self.client.get('/api/matches/'+public_matches[0]['id']).json()
+        self.assertEqual(match['seed'],11)
         self.assertIsNone(claim())
         response=self.client.get('/api/contests/test-1/experiments')
         self.assertEqual(response.status_code,200,response.text)

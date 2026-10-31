@@ -300,6 +300,11 @@ def match_dict(row):
     if item['status'] in ('remote_queued', 'remote_running'):
         item['status'] = item['status'].removeprefix('remote_')
         item['execution_host'] = 'txcloud'
+    config = json.loads(item.pop('job_config_json', '{}'))
+    setup = config.get('setups_by_seed', {}).get(f"{item['mode']}:{item['seed']}", {})
+    if 'map_seed' in setup:
+        item['seed'] = setup['map_seed']
+        item['scenario'] = setup.get('scenario')
     item["seats"] = [public_seat(s) for s in json.loads(item.pop("seat_json"))]
     item["result"] = (
         json.loads(item.pop("result_json")) if item.get("result_json") else None
@@ -312,7 +317,7 @@ def match_dict(row):
 
 def get_match(db, match_id, user_id):
     row = db.execute(
-        "SELECT m.*,j.name AS job_name,j.kind FROM matches m JOIN jobs j ON j.id=m.job_id WHERE m.id=? AND (m.public=1 OR m.owner_id=?)",
+        "SELECT m.*,j.name AS job_name,j.kind,j.config_json AS job_config_json FROM matches m JOIN jobs j ON j.id=m.job_id WHERE m.id=? AND (m.public=1 OR m.owner_id=?)",
         (match_id, user_id),
     ).fetchone()
     if not row:
