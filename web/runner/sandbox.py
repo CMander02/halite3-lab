@@ -7,7 +7,9 @@ import sys
 BWRAP = os.environ.get("HALITE_BWRAP", "/usr/local/lib/halite3/bwrap")
 
 
-def command(directory, argv, unit, compile=False, runtime=105):
+def command(directory, argv, unit, compile=False, runtime=105, cpu_percent=35, slice_name=None):
+    if not 1 <= int(cpu_percent) <= 100:
+        raise ValueError("Bot CPU percent must be within 1..100")
     budget = (
         [
             "-p",
@@ -28,7 +30,7 @@ def command(directory, argv, unit, compile=False, runtime=105):
             "-p",
             "MemorySwapMax=0",
             "-p",
-            "CPUQuota=35%",
+            f"CPUQuota={int(cpu_percent)}%",
             "-p",
             "TasksMax=32",
             "-p",
@@ -41,6 +43,7 @@ def command(directory, argv, unit, compile=False, runtime=105):
         "--scope",
         "--quiet",
         f"--unit={unit}",
+        *([f"--slice={slice_name}"] if slice_name else []),
         *budget,
         BWRAP,
         "--unshare-all",
@@ -99,6 +102,7 @@ if __name__ == "__main__":
 
     config = json.loads(Path(sys.argv[1]).read_text())
     cmd = command(
-        config["source_dir"], config["argv"], config["unit"], runtime=config.get("runtime", 105)
+        config["source_dir"], config["argv"], config["unit"], runtime=config.get("runtime", 105),
+        cpu_percent=config.get("cpu_percent",35), slice_name=config.get("slice_name")
     )
     os.execvp(cmd[0], cmd)

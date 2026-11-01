@@ -45,6 +45,8 @@ int main(int argc, char *argv[]) {
     ValueArg<unsigned int> seed_arg("s", "seed", "The seed for the map generator.", false, 0, "positive integer", cmd);
     ValueArg<unsigned long> turn_limit_arg("", "turn-limit", "The maximum number of turns to play.",
                                            false, 0, "positive integer", cmd);
+    ValueArg<unsigned int> turn_timeout_arg("", "turn-timeout-ms", "Maximum command-response wait per bot in milliseconds.",
+                                           false, 2000, "milliseconds", cmd);
     ValueArg<std::string> replay_arg("i", "replay-directory", "The path to directory for replay output.", false, ".",
                                      "path to directory", cmd);
     ValueArg<std::string> constants_arg("c", "constants-file", "JSON file containing runtime constants to use.", false,
@@ -60,6 +62,10 @@ int main(int argc, char *argv[]) {
     UnlabeledMultiArg<std::string> command_args("bot-commands", "Start commands for bots.", true, "path strings", cmd);
 
     cmd.parse(argc, argv);
+    if (turn_timeout_arg.getValue() < 10 || turn_timeout_arg.getValue() > 10000) {
+        std::cerr << "turn-timeout-ms must be between 10 and 10000" << std::endl;
+        return 1;
+    }
 
     // Update the game constants
     if (constants_arg.isSet()) {
@@ -139,6 +145,7 @@ int main(int argc, char *argv[]) {
 
     net::NetworkingConfig networking_config{};
     networking_config.ignore_timeout = timeout_switch.getValue();
+    networking_config.timeout = std::chrono::milliseconds(turn_timeout_arg.getValue());
 
     hlt::Map map(map_parameters.width, map_parameters.height);
     hlt::mapgen::Generator::generate(map, map_parameters);
@@ -170,6 +177,7 @@ int main(int argc, char *argv[]) {
 
     // JSON results info, used by backend
     nlohmann::json results;
+    results["turn_timeout_ms"] = turn_timeout_arg.getValue();
     results["error_logs"] = nlohmann::json::object();
     results["terminated"] = nlohmann::json::object();
 

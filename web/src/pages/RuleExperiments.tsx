@@ -5,7 +5,8 @@ import type { Standings } from "@/lib/types";
 
 type Case = { key: string; label: string; counts: Record<string, number>; total: number; map_seeds: number[];
   setups: Record<string, { width: number; height: number; turns: number; rules: Record<string, unknown> }> };
-type Results = { execution_host: string; selected: string; scenarios: Case[]; standings: Standings;
+type Batch = { key: string; label: string; job_id: string; turn_timeout_ms: number; bot_cpu_percent: number; worker_cpus?: number[] | null };
+type Results = { execution_batches: Batch[]; selected_batch: Batch; execution_host: string; selected: string; scenarios: Case[]; standings: Standings;
   progress: { counts: Record<string, number>; total: number };
   roster: { version_id: string; bot_id: string; bot_name: string; version: string; elo: number; sha256: string }[];
   diagnostics: { mode: number; seats: number; no_spawn_seats: number; ships_built: number; mined: number; delivered: number; deaths: number }[] };
@@ -13,9 +14,10 @@ type Results = { execution_host: string; selected: string; scenarios: Case[]; st
 export default function RuleExperiments({ slug }: { slug: string }) {
   const { search } = useLocation();
   const scenario = search.get("scenario") || "combined";
+  const batch = search.get("batch") || "";
   const mode = ["2", "4", "8"].includes(search.get("mode") || "") ? search.get("mode")! : "2";
   const update = (key: string, value: string) => { const next = new URLSearchParams(search); next.set(key, value); navigate(`/contests/${slug}/experiments?${next}`); };
-  const report = useApi<Results>(`/contests/${slug}/experiments?scenario=${encodeURIComponent(scenario)}`, 30000);
+  const report = useApi<Results>(`/contests/${slug}/experiments?scenario=${encodeURIComponent(scenario)}&batch=${encodeURIComponent(batch)}`, 30000);
   if (report.loading) return <Loading />;
   if (!report.data) return <ErrorBox message={report.error || "尚无实验数据"} />;
   const d = report.data, selected = d.scenarios.find((c) => c.key === d.selected)!;
@@ -24,10 +26,11 @@ export default function RuleExperiments({ slug }: { slug: string }) {
   return <div className="flex min-w-0 flex-col gap-5">
     <ErrorBox message={report.error} />
     <div className="pixel-frame p-4">
-      <p className="mt-0">执行主机：{d.execution_host} · 已完成 {number(d.progress.counts.complete || 0)} / {number(d.progress.total)} 场 · 运行 {number(d.progress.counts.running || 0)} · 等待 {number(d.progress.counts.queued || 0)} · 失败 {number(d.progress.counts.failed || 0)}</p>
+      <p className="mt-0">{d.selected_batch.label} · 每步 {d.selected_batch.turn_timeout_ms} ms · 单 Bot CPU {d.selected_batch.bot_cpu_percent}%{d.selected_batch.worker_cpus?.length ? " · 每场独立 1 核" : ""}</p>
+      <p>执行主机：{d.execution_host} · 已完成 {number(d.progress.counts.complete || 0)} / {number(d.progress.total)} 场 · 运行 {number(d.progress.counts.running || 0)} · 等待 {number(d.progress.counts.queued || 0)} · 失败 {number(d.progress.counts.failed || 0)}{d.progress.counts.cancelled ? ` · 停止派发 ${number(d.progress.counts.cancelled)}` : ""}</p>
       <p className="mb-0 text-ink-2">固定现有 Bot 源码和版本，按规则变体分别统计。综合新规则为主排行，实验结果不计入 #0 或全局 ELO。旧 Bot 可能硬编码容量、费用或地图环绕；零造船和零搬运也属于迁移结果。每组仅使用一个地形种子和座位轮换，不能据此确定普遍的规则优劣。</p>
     </div>
-    <div className="flex flex-wrap gap-4"><label className="flex min-w-0 flex-wrap items-center gap-2">规则实验<select aria-label="规则实验" value={scenario} onChange={(e) => update("scenario", e.target.value)} className="h-9 max-w-full border border-line bg-paper-2 px-2">{d.scenarios.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
+    <div className="flex flex-wrap gap-4"><label className="flex items-center gap-2">执行批次<select aria-label="执行批次" value={d.selected_batch.key} onChange={(e) => update("batch",e.target.value)} className="h-9 max-w-full border border-line bg-paper-2 px-2">{d.execution_batches.map((b)=><option key={b.key} value={b.key}>{b.label}</option>)}</select></label><label className="flex min-w-0 flex-wrap items-center gap-2">规则实验<select aria-label="规则实验" value={scenario} onChange={(e) => update("scenario", e.target.value)} className="h-9 max-w-full border border-line bg-paper-2 px-2">{d.scenarios.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
       <label className="flex items-center gap-2">人数<select aria-label="实验人数" value={mode} onChange={(e) => update("mode", e.target.value)} className="h-9 border border-line bg-paper-2 px-2"><option value="2">1v1</option><option value="4">4 人</option><option value="8">8 人</option></select></label></div>
     <div className="pixel-frame min-w-0 p-4">
       <h2 className="mt-0 text-xl">{selected.label}</h2><p>{selected.setups[mode].width}×{selected.setups[mode].height} · {selected.setups[mode].turns} 步 · 地形种子 {selected.map_seeds.join(", ")} · 本组已完成 {selected.counts.complete || 0} / {selected.total}</p>

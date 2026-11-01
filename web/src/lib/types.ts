@@ -130,6 +130,7 @@ export interface Match {
   has_replay: boolean;
   created_at: number;
   finished_at: number | null;
+  execution?: { turn_timeout_ms: number; bot_cpu_percent: number; batch: string };
   can_view_logs?: boolean;
   /** the contest the game was played for (match detail only) */
   contest?: { slug: string; number: number; title: string } | null;

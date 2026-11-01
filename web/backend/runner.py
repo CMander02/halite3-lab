@@ -166,6 +166,8 @@ def run_match(match):
                         "source_dir": str(directory),
                         "argv": argv,
                         "runtime": configuration["seconds"] + 5,
+                        "cpu_percent": configuration.get("bot_cpu_percent",35),
+                        "slice_name": configuration.get("bot_slice"),
                     }
                 )
             )
@@ -194,6 +196,8 @@ def run_match(match):
             str(workspace),
             *commands,
         ]
+        if "turn_timeout_ms" in configuration:
+            argv[1:1] = ["--turn-timeout-ms", str(configuration["turn_timeout_ms"])]
         process = subprocess.Popen(
             argv,
             stdout=subprocess.PIPE,
@@ -231,6 +235,8 @@ def run_match(match):
         if process.returncode:
             raise RuntimeError(f"引擎退出码 {process.returncode}。")
         raw = json.loads(stdout)
+        if raw.get('turn_timeout_ms',2000) != configuration.get('turn_timeout_ms',2000):
+            raise RuntimeError('引擎回复限时与赛程不一致。')
         for i in range(match["mode"]):
             text = ""
             name = raw.get("error_logs", {}).get(str(i))
@@ -272,6 +278,10 @@ def run_match(match):
             "terminated": raw.get("terminated", {}),
             "engine_sha256": hashlib.sha256(S.ENGINE.read_bytes()).hexdigest(),
             "rules": configuration["rules"],
+            "execution": dict(turn_timeout_ms=configuration.get("turn_timeout_ms",2000),
+                              bot_cpu_percent=configuration.get("bot_cpu_percent",35),
+                              batch=configuration.get("execution_batch","legacy2000"),
+                              worker_cpu=match.get('worker_cpu')),
             "protocol": "halite3-lab-v1",
             "turns": len(replay["full_frames"]) - 2,
         }
@@ -397,7 +407,22 @@ def worker(match, parent):
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     parent_death(parent, signal.SIGTERM)
+    if 'worker_cpu' in match:
+        os.sched_setaffinity(0,{match['worker_cpu']})
     run_match(match)
+
+
+def assign_worker_cpu(match, workers):
+    requested=json.loads(match['config_json']).get('worker_cpus')
+    if not requested:
+        return
+    if not set(requested)<=os.sched_getaffinity(0):
+        raise ValueError('Requested worker CPUs are unavailable')
+    occupied={item[1].get('worker_cpu') for item in workers.values()}
+    free=[cpu for cpu in requested if cpu not in occupied]
+    if not free:
+        raise ValueError('No isolated worker CPU available')
+    match['worker_cpu']=free[0]
 
 
 def maintain(workers, renew=True):
@@ -501,8 +526,9 @@ def main():
                         )
                         if not match:
                             break
-                        process = context.Process(target=worker, args=(match, os.getpid()))
                         try:
+                            assign_worker_cpu(match, workers)
+                            process = context.Process(target=worker, args=(match, os.getpid()))
                             process.start()
                         except Exception:
                             recover(match)

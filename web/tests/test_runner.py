@@ -43,6 +43,21 @@ class RunnerTest(unittest.TestCase):
                 db.execute("INSERT INTO users(id,username,display_name,password_hash,created_at) VALUES(?,?,?,?,0)", (name, name, name, "unused"))
                 db.execute("INSERT INTO jobs(id,owner_id,name,config_json,created_at) VALUES(?,?,?,'{}',0)", (name, name, name))
 
+    def test_worker_cpu_isolation_reuses_only_free_cores(self):
+        cpus=sorted(os.sched_getaffinity(0))[:2]
+        if len(cpus)<2:self.skipTest('Needs two allowed CPUs')
+        match={'config_json':json.dumps({'worker_cpus':cpus})}
+        runner.assign_worker_cpu(match,{})
+        self.assertEqual(match['worker_cpu'],cpus[0])
+        second={'config_json':match['config_json']}
+        runner.assign_worker_cpu(second,{1:(None,match)})
+        self.assertEqual(second['worker_cpu'],cpus[1])
+        with self.assertRaisesRegex(ValueError,'No isolated'):
+            runner.assign_worker_cpu({'config_json':match['config_json']},{1:(None,match),2:(None,second)})
+        released={'config_json':match['config_json']}
+        runner.assign_worker_cpu(released,{2:(None,second)})
+        self.assertEqual(released['worker_cpu'],cpus[0])
+
     def enqueue(self, id, mode=2, owner="alice"):
         with connect() as db:
             db.execute("INSERT INTO matches(id,job_id,owner_id,mode,seed,seat_json,created_at) VALUES(?,?,?,?,11,'[]',0)", (id, owner, owner, mode))

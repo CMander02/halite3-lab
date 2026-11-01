@@ -45,7 +45,7 @@ export default function MatchList({ matches, compact = false }: { matches: Match
           <a key={match.id} href={`/matches/${match.id}`} className="group border-b border-line-2 px-3 py-2.5 hover:bg-blue-50">
             <div className="mb-1 flex items-center justify-between gap-2 text-ink-3">
               <span>
-                <ModeLabel mode={match.mode} /> · {kindLabel(match.kind)}
+                <ModeLabel mode={match.mode} /> · {kindLabel(match.kind)}{match.kind === "contest-final" && match.execution ? ` · ${match.execution.turn_timeout_ms} ms` : ""}
               </span>
               <span>{ago(match.created_at)}</span>
             </div>
@@ -79,7 +79,7 @@ export default function MatchList({ matches, compact = false }: { matches: Match
                 <tr key={match.id}>
                   <td className="max-w-[420px]">
                     <Seats match={match} />
-                    <span className="text-ink-3">{kindLabel(match.kind)}</span>
+                    <span className="text-ink-3">{kindLabel(match.kind)}{match.kind === "contest-final" && match.execution ? ` · ${match.execution.turn_timeout_ms} ms` : ""}</span>
                   </td>
                   <td>
                     <AvatarStack seats={match.seats} />
@@ -129,7 +129,7 @@ export default function MatchList({ matches, compact = false }: { matches: Match
                   <Tag>
                     <ModeLabel mode={match.mode} />
                   </Tag>
-                  <span>{kindLabel(match.kind)}</span>
+                  <span>{kindLabel(match.kind)}{match.kind === "contest-final" && match.execution ? ` · ${match.execution.turn_timeout_ms} ms` : ""}</span>
                   <span className="ml-auto">{ago(match.created_at)}</span>
                 </div>
                 <Seats match={match} limit={4} />

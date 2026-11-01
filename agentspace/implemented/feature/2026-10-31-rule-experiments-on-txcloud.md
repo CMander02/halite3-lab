@@ -44,3 +44,7 @@ The 2240-game batch continues under systemd after an agent turn. Only the remote
 ## Testing
 
 Physics tests cover symmetry, budgets, connectivity and determinism; bounded motion/fog; fixed mining/free movement; enemy-only pileups; protected spawning; ship caps, scout metadata, and production/cooldown timing; low-granularity ore and overflow. Backend tests cover coverage, all seats, roster/source freeze, remote queue isolation, global rating exclusion, sanitized export and repeat creation. Browser checks cover case/mode URL state, mobile overflow and console health. Real native matches and matching engine/source hashes are verified on txcloud before handoff; full batch completion is tracked separately.
+
+## Execution-profile update
+
+The [500ms batches](2026-11-01-fast500-experiment-batches.md) preserve the original completed results and add a complete, separately ranked execution under the requested deadline. The map, roster and physics contracts above remain unchanged.

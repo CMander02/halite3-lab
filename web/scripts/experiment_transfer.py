@@ -4,6 +4,7 @@ The remote database contains only the chosen versions, dummy account hashes and
 this experiment's queue. No live credentials, traces or unrelated bots leave the host.
 """
 import argparse
+from collections import Counter
 import gzip
 import hashlib
 import json
@@ -96,6 +97,9 @@ def import_results(download):
                 continue
             if row['status']!='complete':continue
             result=json.loads(row['result_json'])
+            if result.get('execution',{}).get('turn_timeout_ms',2000)!=config.get('turn_timeout_ms',2000):raise RuntimeError('Execution timeout mismatch')
+            if result.get('execution',{}).get('bot_cpu_percent',35)!=config.get('bot_cpu_percent',35):raise RuntimeError('Execution CPU quota mismatch')
+            if config.get('worker_cpus') and result.get('execution',{}).get('worker_cpu') not in config['worker_cpus']:raise RuntimeError('Worker CPU isolation mismatch')
             if result.get('engine_sha256')!=manifest['engine_sha256']:raise RuntimeError('Engine hash mismatch')
             key=f"replays/{row['id']}.json.gz"
             if row['replay_key']!=key:raise RuntimeError('Unexpected replay path')
@@ -152,11 +156,77 @@ def promote(staging):
     return dict(contest_id=contest['id'],existing=False)
 
 
+def adopt_batch(snapshot, expected_engine_sha256):
+    remote=sqlite3.connect(f'file:{Path(snapshot).resolve()}?mode=ro',uri=True);remote.row_factory=sqlite3.Row
+    contest=dict(remote.execute("SELECT * FROM contests WHERE slug='test-1'").fetchone())
+    config=json.loads(contest['config_json'])
+    if config.get('active_batch')!='fast500':raise RuntimeError('Expected explicit 500ms transition')
+    active=next(b for b in config['execution_batches'] if b['key']=='fast500')
+    old_id=next(b['job_id'] for b in config['execution_batches'] if b['key']=='legacy2000')
+    if active['engine_sha256']!=expected_engine_sha256:raise RuntimeError('Expected engine hash mismatch')
+    new_id=contest['final_job_id']
+    rows=[dict(r) for r in remote.execute('SELECT * FROM matches WHERE job_id=? ORDER BY rowid',(new_id,))]
+    fingerprint=lambda r:(r['mode'],r['seed'],r['seat_json'])
+    old_rows=[dict(r) for r in remote.execute('SELECT * FROM matches WHERE job_id=? ORDER BY rowid',(old_id,))]
+    if len(rows)!=2240 or Counter(map(fingerprint,rows))!=Counter(map(fingerprint,old_rows)):
+        raise RuntimeError('Frozen schedule coverage changed')
+    with connect() as db:
+        local=db.execute('SELECT * FROM contests WHERE id=?',(contest['id'],)).fetchone()
+        if local['final_job_id']==new_id:
+            remote.close()
+            return dict(job_id=new_id,existing=True)
+        if local['final_job_id']!=old_id:raise RuntimeError('Unexpected current batch')
+        for row in old_rows:
+            prior=db.execute('SELECT status,result_json FROM matches WHERE id=? AND job_id=?',(row['id'],old_id)).fetchone()
+            if not prior:raise RuntimeError('Missing original match')
+            if row['status']=='complete':
+                if prior['status']!='complete' or prior['result_json']!=row['result_json']:
+                    raise RuntimeError('Sync all original completed results before transition')
+            elif row['status']=='cancelled' and prior['status'] in ('remote_queued','queued'):
+                db.execute("UPDATE matches SET status='cancelled' WHERE id=?",(row['id'],))
+            else:raise RuntimeError('Unexpected original execution state')
+        for version in config['roster']:
+            if db.execute('SELECT sha256 FROM versions WHERE id=?',(version['version_id'],)).fetchone()[0]!=version['sha256']:
+                raise RuntimeError('Source identity changed')
+        job=dict(remote.execute('SELECT * FROM jobs WHERE id=?',(new_id,)).fetchone())
+        if job['rating_scope']!='contest':raise RuntimeError('Experiment must remain contest-only')
+        insert(db,'jobs',job)
+        for row in rows:
+            row.update(status='remote_queued',attempts=0,result_json=None,replay_key=None,started_at=None,finished_at=None,lease_token=None,lease_until=None)
+            insert(db,'matches',row)
+        db.execute('UPDATE contests SET final_job_id=?,config_json=?,standings_json=NULL,finalized_at=NULL WHERE id=?',
+                   (new_id,contest['config_json'],contest['id']))
+    remote.close()
+    return dict(job_id=new_id,existing=False)
+
+
 def main():
-    p=argparse.ArgumentParser();p.add_argument('action',choices=['create','export','import','promote','status']);p.add_argument('path',nargs='?');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('action',choices=['create','export','import','promote','status','fast500','adopt-batch']);p.add_argument('path',nargs='?');p.add_argument('--engine-sha256');p.add_argument('--workers',type=int,default=2);p.add_argument('--pin-cpus');a=p.parse_args()
     if a.action=='create':
         initialize()
         with connect() as db:value={'contest_id':E.create(db)}
+    elif a.action=='fast500':
+        from backend.experiment_batches import fast500
+        path=S.DATA/'manifest.json'
+        manifest=json.loads(path.read_text())  # only a remote export has a root manifest
+        digest=hashlib.sha256(S.ENGINE.read_bytes()).hexdigest()
+        with connect() as db:
+            contest=db.execute("SELECT final_job_id,config_json FROM contests WHERE slug='test-1'").fetchone()
+            current=contest['final_job_id'];cfg=json.loads(contest['config_json'])
+            allowed={current}|{b['job_id'] for b in cfg.get('execution_batches',[]) if b['key']=='legacy2000'}
+            if manifest['job_id'] not in allowed:raise RuntimeError('Remote manifest does not match active job')
+            if db.execute("SELECT 1 FROM matches WHERE job_id=? AND status LIKE 'remote_%' LIMIT 1",(current,)).fetchone():
+                raise RuntimeError('Run fast500 only on the remote execution database')
+            for source in manifest['sources']:
+                version=db.execute('SELECT object_key,sha256 FROM versions WHERE id=?',(source['id'],)).fetchone()
+                if version['sha256']!=source['sha256'] or hashlib.sha256((S.DATA/version['object_key']).read_bytes()).hexdigest()!=source['sha256']:
+                    raise RuntimeError('Frozen source changed')
+            cpus=[int(cpu) for cpu in a.pin_cpus.split(',')] if a.pin_cpus else None
+            if cpus is not None and not set(cpus)<=__import__('os').sched_getaffinity(0):raise RuntimeError('Requested CPUs unavailable')
+            value={'job_id':fast500(db,digest,a.workers,worker_cpus=cpus)}
+        manifest.update(job_id=value['job_id'],engine_sha256=digest,matches=2240)
+        temporary=path.with_suffix('.new');temporary.write_text(json.dumps(manifest,indent=2));temporary.replace(path)
+    elif a.action=='adopt-batch':value=adopt_batch(a.path,a.engine_sha256)
     elif a.action=='export':value=export(a.path)
     elif a.action=='import':value=import_results(a.path)
     elif a.action=='promote':value=promote(a.path)

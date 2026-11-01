@@ -94,6 +94,58 @@ class ExperimentTest(unittest.TestCase):
         stats=self.client.get('/api/leaderboard/stats').json()
         self.assertFalse(stats['entries'])
 
+    def test_new_batch_preserves_completed_rows_and_separates_rankings(self):
+        from backend.experiment_batches import fast500
+        with connect() as db:
+            E.create(db)
+            c=db.execute("SELECT * FROM contests WHERE number=1").fetchone()
+            old_id=c['final_job_id']
+            old=db.execute('SELECT * FROM matches WHERE job_id=? ORDER BY rowid LIMIT 1',(old_id,)).fetchone()
+            db.execute("UPDATE matches SET status='complete',result_json=? WHERE id=?",(json.dumps(dict(stats={'0':dict(rank=1,score=100),'1':dict(rank=2,score=0)})),old['id']))
+            before=dict(db.execute('SELECT * FROM matches WHERE id=?',(old['id'],)).fetchone())
+            new_id=fast500(db,'a'*64,3)
+            self.assertEqual(new_id,fast500(db,'a'*64,3))
+            with self.assertRaisesRegex(RuntimeError,'immutable'):
+                fast500(db,'b'*64,3)
+            self.assertEqual(before,dict(db.execute('SELECT * FROM matches WHERE id=?',(old['id'],)).fetchone()))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM matches WHERE job_id=? AND status='cancelled'",(old_id,)).fetchone()[0],2239)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM matches WHERE job_id=?',(new_id,)).fetchone()[0],2240)
+            row=db.execute('SELECT * FROM matches WHERE job_id=? ORDER BY rowid LIMIT 1',(new_id,)).fetchone()
+            db.execute("UPDATE matches SET status='complete',result_json=? WHERE id=?",(json.dumps(dict(stats={'0':dict(rank=2,score=10),'1':dict(rank=1,score=20)})),row['id']))
+        fast=self.client.get('/api/contests/test-1/experiments').json()
+        old=self.client.get('/api/contests/test-1/experiments?batch=legacy2000').json()
+        self.assertEqual(fast['selected_batch']['turn_timeout_ms'],500)
+        self.assertEqual(old['selected_batch']['turn_timeout_ms'],2000)
+        vid=json.loads(before['seat_json'])[0]['id']
+        self.assertEqual(next(v for v in fast['standings']['2'] if v['version_id']==vid)['mean_score'],10)
+        self.assertEqual(next(v for v in old['standings']['2'] if v['version_id']==vid)['mean_score'],100)
+        self.assertEqual(self.client.get('/api/contests/test-1/experiments?batch=missing').status_code,422)
+
+    def test_adopting_batch_is_idempotent_and_preserves_completed_games(self):
+        from backend.experiment_batches import fast500
+        path=Path(__file__).resolve().parents[1]/'scripts/experiment_transfer.py'
+        spec=importlib.util.spec_from_file_location('experiment_transfer_adopt_test',path)
+        transfer=importlib.util.module_from_spec(spec);spec.loader.exec_module(transfer)
+        with connect() as db:
+            E.create(db)
+            old_id=db.execute("SELECT final_job_id FROM contests WHERE number=1").fetchone()[0]
+            mid=db.execute('SELECT id FROM matches WHERE job_id=? ORDER BY rowid LIMIT 1',(old_id,)).fetchone()[0]
+            db.execute("UPDATE matches SET status='complete',result_json='{}' WHERE id=?",(mid,))
+            frozen=dict(db.execute('SELECT * FROM matches WHERE id=?',(mid,)).fetchone())
+        snapshot=S.DATA/'transition.sqlite3'
+        with sqlite3.connect(S.DATA/'arena.sqlite3') as source, sqlite3.connect(snapshot) as target:source.backup(target)
+        with sqlite3.connect(snapshot) as remote:
+            remote.row_factory=sqlite3.Row
+            new_id=fast500(remote,'a'*64,3)
+        with self.assertRaisesRegex(RuntimeError,'hash mismatch'):transfer.adopt_batch(snapshot,'b'*64)
+        self.assertFalse(transfer.adopt_batch(snapshot,'a'*64)['existing'])
+        self.assertTrue(transfer.adopt_batch(snapshot,'a'*64)['existing'])
+        with connect() as db:
+            self.assertEqual(frozen,dict(db.execute('SELECT * FROM matches WHERE id=?',(mid,)).fetchone()))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM matches WHERE job_id=? AND status='remote_queued'",(new_id,)).fetchone()[0],2240)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM matches WHERE job_id=? AND status='cancelled'",(old_id,)).fetchone()[0],2239)
+        self.assertIsNone(claim())
+
     def test_remote_export_has_only_frozen_versions_and_no_live_auth(self):
         path=Path(__file__).resolve().parents[1]/'scripts/experiment_transfer.py'
         spec=importlib.util.spec_from_file_location('experiment_transfer_test',path)

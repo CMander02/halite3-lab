@@ -305,6 +305,9 @@ def match_dict(row):
     if 'map_seed' in setup:
         item['seed'] = setup['map_seed']
         item['scenario'] = setup.get('scenario')
+    item["execution"] = dict(turn_timeout_ms=config.get("turn_timeout_ms",2000),
+                             bot_cpu_percent=config.get("bot_cpu_percent",35),
+                             batch=config.get("execution_batch","legacy2000"))
     item["seats"] = [public_seat(s) for s in json.loads(item.pop("seat_json"))]
     item["result"] = (
         json.loads(item.pop("result_json")) if item.get("result_json") else None

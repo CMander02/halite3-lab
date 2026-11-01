@@ -119,6 +119,11 @@ def game_rules(config):
                  '', '初始格矿上限在整数经济变体中为 15；碰撞回流矿可超过 15，不丢弃资源。运输船与侦察船交替自动出生，旧 Bot 仍使用原有 g 指令；侦察船具有独立容量与视野。',
                  '', '不同变体沿用对应的结算顺序：建落点、移动、碰撞、自动卸货、出生、采矿。生产限制拒绝出生时不收费。',
                  '', '## 全部实验配置', '']
+        if config.get('execution_batches'):
+            lines += ['## 执行批次与限时', '']
+            for batch in config['execution_batches']:
+                lines += [f"- {batch['label']}：每个 Bot 每回合回复限时 {batch['turn_timeout_ms']} 毫秒；单 Bot CPU 配额 {batch['bot_cpu_percent']}%。各批次分别统计，已完成的旧结果保留。"]
+            lines += ['']
         for case in config['scenarios']:
             lines += [f"### {case['label']} (`{case['key']}`)", '']
             for mode, setup in case['setups'].items():
@@ -407,7 +412,7 @@ def kit(db, row, config, origin, version_rows):
     rows = version_rows(db, offered)
     with zipfile.ZipFile(buffer, "w") as archive:
         if config.get('experimental'):
-            put('EXPERIMENTS.json', json.dumps({'scenarios':config['scenarios'],'roster':config['roster']},ensure_ascii=False,indent=2))
+            put('EXPERIMENTS.json', json.dumps({'scenarios':config['scenarios'],'roster':config['roster'],'execution_batches':config.get('execution_batches',[])},ensure_ascii=False,indent=2))
         bots = []
         for vid in offered:
             v = rows.get(vid)

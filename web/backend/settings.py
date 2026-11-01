@@ -26,8 +26,8 @@ LEASE_SECONDS = 180
 # Opt in after measuring the host. Eight-player matches reserve all eight seats.
 RUNNER_WORKERS = int(os.environ.get("HALITE_RUNNER_WORKERS", "1"))
 RUNNER_SEATS = int(os.environ.get("HALITE_RUNNER_SEATS", "8"))
-if not 1 <= RUNNER_WORKERS <= 4 or not 8 <= RUNNER_SEATS <= 16:
-    raise ValueError("Runner limits require 1..4 workers and 8..16 seats")
+if not 1 <= RUNNER_WORKERS <= 4 or not 8 <= RUNNER_SEATS <= 32:
+    raise ValueError("Runner limits require 1..4 workers and 8..32 seats")
 MAX_GAME_SECONDS = 100
 RETENTION_DAYS = 30
 RULES = {

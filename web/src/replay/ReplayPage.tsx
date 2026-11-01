@@ -338,6 +338,7 @@ export default function ReplayPage({ id }: { id: string }) {
             轻船抢矿 · 同重沉没
             {replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE ? ` · ${replay.data.GAME_CONSTANTS.PILEUP_WRECK_SIZE} 船以上${replay.data.GAME_CONSTANTS.PILEUP_ENEMIES_ONLY ? "且含敌方时" : ""}全沉` : ""}
           </dd>
+          {m.execution && <><dt>回复限时</dt><dd className="m-0 text-ink">{m.execution.turn_timeout_ms} ms · 单 Bot CPU {m.execution.bot_cpu_percent}%</dd></>}
           <dt>来源</dt>
           <dd className="m-0 text-ink">{m.kind === "ranked" ? "固定基准评测" : m.kind === "ranked-multi" ? "多人基准评测" : m.kind === "demo" ? "公开示例" : m.kind === "contest-final" ? "比赛正式评测" : "私人测试"}</dd>
         </dl>

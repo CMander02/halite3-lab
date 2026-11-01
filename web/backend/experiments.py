@@ -164,13 +164,18 @@ def create(db):
 
 
 @router.get('/api/contests/{key}/experiments')
-def experiment_results(key: str, request: Request, scenario: str = 'combined'):
+def experiment_results(key: str, request: Request, scenario: str = 'combined', batch: str | None = None):
     user = user_for(request, False)
     with connect() as db:
         contest = contests.load(db, key, user)
         config = json.loads(contest['config_json'])
         if not config.get('experimental'):
             raise HTTPException(404, '此比赛没有规则实验。')
+        batches = config.get('execution_batches') or [dict(key='legacy2000', label='原批次 · 2000 ms', job_id=contest['final_job_id'], turn_timeout_ms=2000, bot_cpu_percent=35)]
+        selected_batch = next((b for b in batches if b['key']==(batch or config.get('active_batch','legacy2000'))), None)
+        if selected_batch is None:
+            raise HTTPException(422,'未知执行批次。')
+        contest = dict(contest,final_job_id=selected_batch['job_id'])
         cases = []
         for case in config['scenarios']:
             counts = dict(db.execute('SELECT status,COUNT(*) FROM matches WHERE job_id=? AND seed=? GROUP BY status',
@@ -183,6 +188,6 @@ def experiment_results(key: str, request: Request, scenario: str = 'combined'):
             SUM(p.ships_built) ships_built,SUM(p.mined) mined,SUM(p.delivered) delivered,SUM(p.deaths) deaths
             FROM match_players p JOIN matches m ON m.id=p.match_id WHERE m.job_id=? AND m.seed=? AND m.status='complete' GROUP BY m.mode''',
             (contest['final_job_id'],case['match_seeds'][0]))]
-        return dict(roster=config['roster'], execution_host=config['execution_host'], primary=config['primary_scenario'], diagnostics=diagnostics,
+        return dict(execution_batches=batches, selected_batch=selected_batch, roster=config['roster'], execution_host=config['execution_host'], primary=config['primary_scenario'], diagnostics=diagnostics,
                     scenarios=cases, selected=scenario, standings=contests.compute(db, contest, 'final', scenario),
                     progress=contests.stage_progress(db, contest, 'final'))
