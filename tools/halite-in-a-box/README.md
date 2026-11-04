@@ -42,3 +42,43 @@ Have fun! (Linux has no prerequisites, since currently the application assumes a
 4. Run: `$(npm root)/.bin/electron-builder -m` (for Mac) or `./node_modules/.bin/electron-builder -w` (for Windows).
 5. Wait a really long time.
 6. Look at `./electron-dist`.
+
+## Asset download authentication
+
+Protected asset downloads require operator-provided OAuth credentials for the
+asset service. The application reads these environment variables at runtime:
+
+| Variable | Purpose |
+| --- | --- |
+| `HALITE_OAUTH_CLIENT_ID` | OAuth client used to exchange the refresh token |
+| `HALITE_OAUTH_CLIENT_SECRET` | Secret for that OAuth client |
+| `HALITE_OAUTH_REFRESH_TOKEN` | Refresh token authorized for the asset service |
+| `HALITE_IAP_AUDIENCE` | Client ID of the IAP-protected asset service |
+
+Inject the variables into the Electron process through your local secret manager
+or protected shell session before starting the application. Use credentials that
+you control and are authorized to use. This project does not load `.env` files.
+Do not place values in source files, build configuration, packaged applications,
+shell history, logs, issues, or pull requests. Each installation must receive its
+own runtime configuration; distributing a shared OAuth secret in an Electron
+bundle exposes it to anyone who obtains the bundle.
+
+`getAuthToken()` still returns a promise for an ID token, and `download(asset)`
+still returns a promise for the fetch response with Bearer authorization. Missing
+configuration rejects the promise with the missing variable names before any
+network request. Failed token requests and invalid token responses reject with
+errors that omit the response body. Tokens are cached for at most 45 minutes and
+refreshed sooner when the service reports a shorter lifetime.
+
+Previously committed credentials must be revoked or rotated by their owner.
+Removing them from source and Git history does not invalidate exposed credentials
+or remove existing clones, forks, or GitHub pull request caches. Use a fresh clone
+after a history rewrite to avoid pushing the old history back to the repository.
+
+Run the authentication regression tests with Node.js 18 or later, without
+installing Electron dependencies:
+
+```sh
+npm test
+node --input-type=module --check < src/util.js
+```

@@ -46,6 +46,7 @@
     },
     "scripts": {
         "watch": "webpack -w --mode=development",
-        "start": "electron ."
+        "start": "electron .",
+        "test": "node --test test/*.test.cjs"
     }
 }

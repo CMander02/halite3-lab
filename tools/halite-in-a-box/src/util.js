@@ -146,28 +146,52 @@ export function fetchApi(apiKey, endpoint, options) {
     return window.fetch(`${API_SERVER_URL}/${endpoint}`, options);
 }
 
-const CLIENT_ID = '[REMOVED_CLIENT_ID]';
-const CLIENT_SECRET = '[REMOVED_CLIENT_SECRET]';
-const REFRESH_TOKEN = '[REMOVED_REFRESH_TOKEN]';
-// Client ID of IAP OAuth credential, not the Other OAuth credential
-const PRIMARY_CLIENT_ID = '[REMOVED_PRIMARY_CLIENT_ID]';
 let __authToken = null;
-let __authTokenDate = null;
+let __authTokenExpiresAt = 0;
+
 export async function getAuthToken() {
-    // Refresh token every 45 minutes
-    if (!__authToken || __authTokenDate < (new Date(new Date() - 45 * 60 * 1000))) {
+    // Read configuration at runtime so packaged bundles contain no credentials.
+    const variables = [
+        'HALITE_OAUTH_CLIENT_ID',
+        'HALITE_OAUTH_CLIENT_SECRET',
+        'HALITE_OAUTH_REFRESH_TOKEN',
+        'HALITE_IAP_AUDIENCE',
+    ];
+    const missing = variables.filter((name) => !process.env[name] || !process.env[name].trim());
+    if (missing.length > 0) {
+        throw new Error(`Missing asset download configuration: ${missing.join(', ')}`);
+    }
+
+    if (!__authToken || Date.now() >= __authTokenExpiresAt) {
         const data = new window.FormData();
-        data.append('client_id', CLIENT_ID);
-        data.append('client_secret', CLIENT_SECRET);
-        data.append('refresh_token', REFRESH_TOKEN);
+        data.append('client_id', process.env.HALITE_OAUTH_CLIENT_ID);
+        data.append('client_secret', process.env.HALITE_OAUTH_CLIENT_SECRET);
+        data.append('refresh_token', process.env.HALITE_OAUTH_REFRESH_TOKEN);
         data.append('grant_type', 'refresh_token');
-        data.append('audience', PRIMARY_CLIENT_ID);
+        data.append('audience', process.env.HALITE_IAP_AUDIENCE);
         const req = await window.fetch('https://www.googleapis.com/oauth2/v4/token', {
             method: 'POST',
             body: data,
         });
-        const result = await req.json();
-        __authToken = result["id_token"];
+        if (!req.ok) {
+            throw new Error(`Asset authentication failed (HTTP ${req.status})`);
+        }
+        let result;
+        try {
+            result = await req.json();
+        }
+        catch (error) {
+            throw new Error('Asset authentication returned invalid JSON');
+        }
+        if (!result || typeof result.id_token !== 'string' || !result.id_token.trim()) {
+            throw new Error('Asset authentication did not return an ID token');
+        }
+        const lifetime = Number(result.expires_in);
+        const cacheSeconds = Number.isFinite(lifetime)
+            ? Math.max(0, Math.min(45 * 60, lifetime - 60))
+            : 45 * 60;
+        __authToken = result.id_token;
+        __authTokenExpiresAt = Date.now() + cacheSeconds * 1000;
     }
     return __authToken;
 }
